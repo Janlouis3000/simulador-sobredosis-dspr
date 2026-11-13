@@ -1,0 +1,152 @@
+# Simulador de Respuesta a Sobredosis · DSPR
+
+Simulador educativo en español para adiestramiento comunitario. Lo desarrolla la División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas del Departamento de Salud de Puerto Rico (DSPR). La persona usuaria encuentra a alguien con una sobredosis, toma decisiones libres (9-1-1, vía aérea, naloxona, respiraciones, RCP, posición de rescate) y ve cómo cambian los signos, el oxígeno y el desenlace.
+
+## Estado actual (v3: fases 1, 2 y 3 completadas)
+- Proyecto Vite con ES modules y Three.js r187 instalado por npm (sin CDN). `npm run build` genera `dist/index.html`: un solo archivo con JS, CSS, logos, los siete personajes que usan los casos y los cuatro escenarios GLB embebidos (vite-plugin-singlefile) para compartir sin servidor. Pesa unos 9.9 MB: la geometría de personajes y escenarios va comprimida con meshopt (`npm run comprimir`), y las texturas son WebP.
+- `index.html`: marcado de las tres pantallas (inicio, simulación, resultado).
+- `src/`:
+  - `engine.js`: motor fisiológico puro, sin DOM. Es la fuente de verdad clínica del modelo. No cambió en la migración.
+  - `escenarios.js`: planes de calibración (los mismos del `test.js` de la v2).
+  - `engine.test.js`: pruebas de Vitest. Fijan los desenlaces exactos de la v2 y las reglas de abajo.
+  - `engine.propiedades.test.js`: pruebas de propiedades, sin números fijos.
+    - Determinismo, y que el resultado no dependa del tamaño de los bloques en que avanza la interfaz.
+    - Que los signos queden dentro de rango con 300 planes al azar.
+    - Que actuar antes o más tiempo nunca empeore el desenlace: naloxona, 9-1-1, respiraciones de rescate, RCP en paro, segunda dosis y posición de rescate.
+    - "Peor" quiere decir: peor desenlace; si ambos mueren, morir antes; si no, más daño. La rutina `jugar` se detiene en la muerte, la ambulancia o el límite, como la interfaz (el motor solo no se detiene).
+  - `scene.js`: escena 3D, poses por articulación (`POSES`), cianosis, utilería y cámaras. Las luces van multiplicadas por PI (`LI`) porque desde r155 son físicas.
+    - Los personajes son `modelos/persona_*.glb` (MPFB, ver abajo), cargados con `import.meta.glob` y GLTFLoader. Cada caso pide un tipo de persona (`SET[id].persona`, la primera letra de la variante: `h` hombre adulto, `m` mujer adulta, `a` adolescente, `v` adulto mayor) y se escoge al azar una de sus variantes, para que ningún caso quede atado a un tono de piel. `?persona=a2` en la dirección fija una variante (capturas, talleres).
+    - Hoy: casos 1 y 3 → `h1` a `h3`; caso 2 → `a1`, `a2` (16 años); caso 4 → `v1`, `v2` (72 años). Ningún caso pide `m`, así que `persona_m*.glb` se dejan fuera del build con un patrón negativo en el glob (siguen en `modelos/`).
+    - Conducta al despertar (`EMOCIONES`, `ponerConducta`): es el equivalente web del Random Behavior System de Unity. Cada emoción (`state.emocion`: enojo, miedo, confusion, asco, gratitud, verguenza) es un contenedor de bloques con su porcentaje, y cada pocos segundos se escoge uno al azar. Los bloques son: quieta, mirar, negar, cabizbaja, mecer, asentir, apartar la cara, mano a la mejilla y mano a la boca.
+    - La agitación (`state.agit`, de 0 a 1) acorta la espera, agranda los gestos y suma un temblor fino. Los giros se escriben como en `POSES` y se suman después del slerp. Los de la mano (`MANO`) se midieron a ojo con `persona_a1`.
+    - El modelo empieza a cargar cuando se escoge el caso (`Scene3D.prepare`). Mientras carga, o si no carga, se usa el maniquí de cápsulas de la v2 (`buildPerson`).
+    - `POSES` está escrito para articulaciones sin rotación de reposo y con brazos y piernas rectos. MakeHuman deja los brazos abiertos (pose A) y los codos doblados, así que `buildPersonGLB` corrige el reposo de brazos y piernas (`Cw`) y convierte: local = (reposo del padre)⁻¹ · pose · (reposo del hueso). Un modelo nuevo con los mismos nombres de huesos funciona sin tocar `POSES`.
+    - `groundPoses` calcula la altura de la raíz en cada pose para que el punto más bajo del cuerpo toque el piso.
+    - Ojos: claves de forma `eyeBlinkLeft`/`eyeBlinkRight` (en piel, cejas y pestañas). Si `cons` es 0-1 quedan entreabiertos (`EYE_REST`), a medio abrir en 2 y abiertos en 3. Al revisar las pupilas (`Scene3D.checkPupils`), el ojo derecho se abre 5 segundos.
+    - Pupila: `pupilShader` agranda o achica el disco negro de la textura del ojo según `d.pupil` del motor (mm). Depende de la posición de los ojos en `brown_eye.png` de MakeHuman (`OJO`); si se cambia la textura del ojo hay que medirla de nuevo.
+    - Vómito: charco con borde irregular y grumos (`vomitPuddle` en `ambiente.js`). Aparece junto a la boca y crece en un segundo.
+    - Sombra de contacto bajo el cuerpo (`contactShadow`) y luz de entorno (`RoomEnvironment`) para reflejos y luz rebotada.
+    - Cianosis: la piel se multiplica por un tinte gris azulado y un shader (`cyanosisShader`) mezcla labios y uñas hacia morado y enfría los dedos. Usa las máscaras del color de vértice (r = labios, g = uñas, b = falanges de los dedos).
+    - Respiración: se escala el hueso `chest` en ancho y profundidad del cuerpo (`breathe`); el cuello y las clavículas se escalan al revés para no inflarse.
+  - Escenarios: se usan los horneados en Blender (`modelos/escenario_<caso>.glb`, ver abajo). `ponerEscenario` los carga; sus materiales vienen negros con la luz horneada como emisión, así que el navegador solo les agrega reflejos. Un plano con `ShadowMaterial` muestra la sombra de la persona sobre el piso horneado. Si el GLB no está listo o no carga, se arma el escenario procedural de `ambiente.js`.
+  - `ambiente.js`: escenarios procedurales de respaldo (`buildSet`), luces por caso (`ESCENARIOS`), sombra de contacto y vómito. Sus superficies se generan en el navegador con mapa de color, relieve y rugosidad.
+  - `ui.js`: estado de la simulación, acciones, Narcan paso a paso, diálogos y resultado.
+    - Al despertar (`openAwake`) hay una conversación de tres turnos para calmar a la persona, con un medidor de agitación. Termina en "se calma y se queda", "se queda de mala gana" o "se va" (agitación 100 desde el segundo turno), y aparece en el resultado como "Calmarlo/a al despertar". No toca el motor, salvo dar otra dosis o cancelar la ambulancia, que actúan como los botones de siempre.
+  - `content.js`: textos de los casos, acciones, pasos de Narcan, datos de la División y `DESPERTAR`.
+    - `DESPERTAR` tiene un perfil por caso (`CASE_INFO[id].despertar`): `nota` (adulto que usa sustancias), `joven` (adolescente) y `mayor` (adulto mayor). Cada perfil trae variantes de cómo despierta, escogidas al azar, cada una con su emoción: enojo porque "le quitaron la nota", miedo, confusión, asco, agradecimiento o vergüenza. Después vienen tres turnos de respuestas, con su efecto en la agitación y su explicación. Si se calma, da las gracias y su emoción pasa a gratitud.
+    - `?emocion=asco` en la dirección fija la reacción (capturas, talleres), como `?persona=`.
+    - Fuente del despertar con síntomas: hoja de datos y guía de inicio rápido de NARCAN en español (Emergent, 2025-2026). Las respuestas siguen prácticas generales de cuidado después de la naloxona y están pendientes de revisión.
+  - `charts.js`: gráficas SVG. `util.js`: `$`, `fmt`, `esc`. `main.js`: punto de entrada. `styles.css`: estilos.
+- **Simulador con árbol de decisiones (los cuatro casos).** Página aparte: `arbol.html` (`npm run dev` → /arbol.html; `npm run build:arbol` → `dist-arbol/arbol.html`, un solo archivo de unos 10.4 MB porque lleva la escena 3D y los modelos). El simulador clásico (`index.html`) no cambió.
+  - **Flujo y escena (`src/arbol/App.tsx`):** menú (Jugar, Tutorial, Controles, Cómo usar la naloxona) → pregunta del tutorial (solo la primera vez) → tarjetas de los cuatro escenarios con miniatura → modo y perfil → simulación → informe. El estilo de interacción (menú, escenarios, modo guiado, iconos sobre el cuerpo, resúmenes) sigue el de simuladores de respuesta a sobredosis que la persona a cargo compartió como referencia; el diseño, la marca, los modelos y los textos son del DSPR.
+    - Modos (`Modo` en `tipos.ts`): `guiado` muestra una pista por paso y la explicación después de cada decisión; `sin_guia` no, y la explicación llega en el resumen de la fase y en el informe. Las pistas (`PISTA_DE` en `arbol.ts`) reutilizan los textos `retro.falta.*`: no agregan contenido clínico.
+    - Fases (`FASES`, `FASE_DE`): evaluar, ayuda, apoyo, despertar. Al pasar a una fase posterior, `Simulacion.tsx` muestra el resumen de lo decidido. En un paro la naloxona se da durante la RCP, así que ese resumen se titula "Pedir ayuda" (`fase.ayuda_sola`).
+    - `componentes/Escena3D.tsx` carga `scene.js` con import diferido y le pasa el estado del motor (`estadoEscena.ts`: pose, respiración, cianosis, vómito, teléfono, dosis, pupilas, emoción). Si no hay WebGL no muestra nada y queda la lista.
+    - Iconos (`.marca`): cada opción con `ancla` e `icono` (`VISUAL` en `arbol.ts`) sale como botón redondo sobre esa parte del cuerpo o ese objeto. `Scene3D.anclas()` da la posición en pantalla en cada cuadro; si dos caen juntos se separan 52 px. Repiten la lista de opciones, así que van con `aria-hidden` y fuera del orden de Tab. Mientras se ve una acción (RCP, respiraciones) se atenúan.
+    - Naloxona a la vista (`Scene3D.darNaloxona`): al usarse una dosis, la cámara va de perfil a la cara y una mano con guante lleva el dispositivo a la fosa nasal, con el pulgar en el émbolo y dos dedos a los lados de la boquilla; la segunda dosis va en la otra fosa. De lado (posición de rescate) la cámara solo se acerca desde arriba. Dura 4.5 s; con movimiento reducido no se anima. `?nalox=0.62` deja la animación quieta en ese punto (capturas).
+    - El teléfono (`phone()` en `scene.js`) quedó del lado de la cámara, junto al hombro, para que su icono no caiga sobre la cabeza. `anclas()` saca de ahí y de los dispositivos las posiciones de "teléfono" y "kit".
+    - Miniaturas: `blender/miniaturas_escenarios.py` renderiza cada `modelos/escenario_<caso>.glb` a `src/assets/escena_<caso>.webp` (640×400).
+    - Segunda dosis: aparece en `decidir` y en `vigilar` cuando pasaron 3 minutos y la persona sigue sin responder (en los casos 1 y 2 basta esperar o vigilar para verla; con ella la adolescente del caso 2 despierta). No se cambió ninguna regla clínica para esto.
+    - Higgsfield (generación de imagen a 3D) no se usa: el plan gratuito da 10 créditos y sus mallas no traen el rig, el parpadeo ni las máscaras de cianosis de las personas MPFB.
+  - TypeScript estricto (`tsconfig.json`), React 19 y Zod. `npm run typecheck`, `npm run lint` (ESLint) y `npm test` deben pasar.
+  - `src/sim/`: lógica pura, sin DOM.
+    - `tipos.ts`: tipos (DecisionNode, DecisionOption, CaseDefinition, ClinicalConfig, Partida, SimulationResult…).
+    - `config/clinica.ts`: TODO número clínico configurable (intervalo de 2.ª dosis 180 s, umbrales de respiración, tiempos de cada acción, umbrales de la conversación). Cada valor dice su fuente y está marcado "requiere revisión clínica".
+    - `arbol/arbol.ts`: un solo árbol para todos los casos. Los nodos `assessment` no los escoge la persona: el intérprete los resuelve con el motor. Los eventos del motor (paro, vómito, despertar, ambulancia, muerte) interrumpen y saltan a su nodo.
+    - Evaluación de la respiración: la inicial ("¿respira normalmente?") usa 12 por minuto; después de la naloxona ("¿respira por su cuenta?") usa 8. Con 12 la ruta "de lado y vigilar" era inalcanzable (la persona despierta antes de llegar a 12). Requiere revisión clínica.
+    - `interprete.ts`: transiciones puras (cada una devuelve una partida nueva). El motor (`engine.js`) sigue siendo la fuente de verdad clínica; `engine.d.ts` le da tipos.
+    - `arbol/validar.ts` (`validateDecisionTree`) + `arbol/esquemas.ts` (Zod): detecta nodos sin destino, duplicados, inalcanzables o sin salida, evaluaciones incompletas, opciones sin retroalimentación, textos faltantes, diálogo inexistente, caso sin objetivos, terminar sin 9-1-1, dosis adicional sin criterio y género. `arbol/main.tsx` lo corre antes de arrancar y no muestra la app si hay errores.
+    - `retro.ts`: informe (acciones críticas completadas, a reforzar, practicadas, tiempos, mensaje central). No es una puntuación.
+    - `casos/casos.ts`: FENTANILO, PASTILLAS, XILAZINA y TARDIO. Solo configuración (motor, textos, diálogo, acciones críticas, `dosisExtraSiRespira`); el motor y sus valores no cambiaron. Las lecciones del informe salen de CASE_INFO (content.js).
+    - Rama de paro (caso 4): si no respira o solo jadea, `llamar_paro` → llamar en altavoz y empezar la RCP de inmediato (AHA 2025); la naloxona se da durante la RCP (opción `rcp.naloxona`). Darla antes de la RCP es una opción incorrecta. Con la mejor respuesta el caso 4 termina en "posible daño cerebral", igual que la calibración del motor ("tardio: RCP inmediata").
+    - Xilazina (caso 3): `dosisExtraSiRespira: false`. Respira por su cuenta y sigue dormido; no se ofrece otra dosis mientras respira de lado (lección del caso). Los demás casos sí la ofrecen si sigue sin responder tras 3 minutos (guía de NARCAN). Requiere revisión clínica.
+    - "No llamar, para que nadie se meta en problemas" es una opción incorrecta en todos los casos (sale del texto del caso 2).
+  - Perfiles: `cpr_trained` (predeterminado), `basic_responder`, `unsure`. Cambian las opciones (respiraciones/RCP 30:2 vs. seguir al operador/compresiones guiadas), lo que dice el operador y el informe; no cambian llamar al 9-1-1 ni dar naloxona. Las compresiones guiadas usan la RCP del motor (no hay modelo de solo compresiones): requiere revisión clínica.
+  - Textos: `src/content/locales/es-PR.json` (todas las claves) y `en-US.json` (vacío: pendiente; en desarrollo se marca "⟦pendiente⟧", en producción no se ofrece). `src/i18n/i18n.ts`. DESPERTAR y NARC_STEPS siguen en `content.js` (los comparte el clásico) y se validan con Zod.
+  - `src/content/recursos.ts`: contactos como datos (reemplaza DIVISION_HTML en el árbol) y los 10 pasos de la naloxona. `src/visual/naloxona3d.ts`: adaptador 3D vacío para la demostración paso a paso, hasta tener GLB del dispositivo, la cabeza y la mano (la dosis dentro de la simulación ya se ve en la escena, con `darNaloxona`).
+  - Interfaz (`src/arbol/`): HTML semántico, botones reales, foco al título de cada paso, `aria-live` para retroalimentación y observaciones, sin temporizadores, `prefers-reduced-motion`. La demostración tiene ilustraciones SVG provisionales hechas en código, narración opcional (voz del navegador, sin red) y Anterior/Siguiente/Repetir/Omitir.
+  - Pruebas: `src/sim/interprete.test.ts` y `arbol/validar.test.ts` (transiciones, perfiles, naloxona perdida/parcial/nuevo dispositivo, 2.ª dosis, paro y vuelta a respirar, conversación calma/mala gana/se va, cancelar ambulancia, informe, los cuatro casos con los tres perfiles, RCP antes de la naloxona en paro, xilazina sin dosis extra, 800 partidas al azar que recorren todos los nodos y opciones). Pendiente (`it.todo`): volver a dormirse después de despertar; el motor no hace que la naloxona se pase.
+  - Build web para enlace e iframe: `npm run build:web` → `dist-web/` (varios archivos, rutas relativas; arbol.html ≈ 122 KB gzip y baja three (≈ 184 KB gzip) y los GLB del caso al comenzar un escenario; index.html carga three y cada GLB solo al escoger el caso). Lleva la política de seguridad (CSP) en `<meta>` (vite.web.config.js): scripts solo propios + `'wasm-unsafe-eval'` para el descompresor meshopt (sin eso los modelos no cargan), Zod en modo `jitless` para no usar `new Function`. Dentro de un iframe, arbol.html envía su altura con `postMessage` (`dspr-simulador-altura`). Detalles, encabezados, `sandbox` del iframe y pruebas manuales pendientes con lectores de pantalla: `docs/despliegue.md`.
+  - Analítica: `src/analitica.ts`, adaptador desactivado por omisión; solo eventos agregados sin datos identificables.
+  - Pruebas de interfaz: `npm run test:e2e` (construye dist-web y corre Playwright con el Microsoft Edge instalado, `channel: 'msedge'`; no baja navegadores). `e2e/`: axe-core WCAG 2.2 AA en cada pantalla (menús incluidos), caso completo solo con teclado, menús, iconos de la escena 3D, modo guiado y sin guía, 400 px, iframe, sin WebGL, GLB que no carga, movimiento reducido, idioma, reinicio y sin errores de consola con la CSP. `entrar()` en `e2e/util.ts` va del menú a la simulación.
+  - Fuentes de Google Fonts todavía externas; alojarlas en el sitio queda pendiente (OFL).
+- `scripts/calibrar.js`: imprime la calibración con el mismo formato que el `test.js` de la v2.
+- `scripts/comprimir.js` (`npm run comprimir`): comprime con meshopt la geometría de `modelos/persona_*.glb` y `escenario_*.glb`, en el lugar.
+  - Usa glTF Transform y meshoptimizer, que son dependencias de desarrollo.
+  - Conserva nombres, huesos, claves de forma, colores de vértice y texturas. No usa `prune()`, que borraría las máscaras de cianosis.
+  - Salta los archivos que ya están comprimidos.
+  - Hay que correrlo después de regenerar personas o escenarios en Blender. Personas: de 6.9 a 2.9 MB; escenarios: de 2.8 a 2.2 MB.
+  - `scene.js` los descomprime con `MeshoptDecoder` de three, sin hilos, para no usar `Worker` ni URL `blob:`.
+- `prototipo/simulador-sobredosis-dspr.html` es la v2 original, que queda como referencia. No tenía `<!doctype>` ni `<meta viewport>`: abría en modo de compatibilidad y en el teléfono se veía como de escritorio. La v3 ya tiene las dos cosas.
+- `blender/generar_personajes_mpfb.py` genera los nueve personajes con MPFB 2 (MakeHuman para Blender) y los exporta a `modelos/persona_<id>.glb` (unos 1.3 MB cada uno, texturas WebP; 0.5 MB después de `npm run comprimir`). `--solo a1,v2` genera solo esos.
+  - Edad en MPFB: 0.1875 = 11 años, 0.5 = 25 y 1.0 = 90. Adolescentes en 0.30 (≈16 años) y adultos mayores en 0.86 (≈72 años), con pieles "old" de MakeHuman y `canas` (pelo y cejas hacia gris).
+  - Pelo de las adolescentes sin flequillo sobre los ojos: `bob01`/`bob02` los tapan y no se verían las pupilas.
+  - Necesita la extensión MPFB y los paquetes CC0 "MakeHuman system assets" y "Faceunits 01" cargados en MPFB. Todo lo que produce es CC0.
+  - Guarda en el color de vértice las zonas de cianosis: labios (grupo `lips`), uñas (`fingernails`, `toenails`) y dedos (pesos de los huesos de las falanges 2 y 3).
+  - `VARIANTES` define cada persona: género, edad, peso, mezcla de ancestría, piel, pelo y ropa. La piel mezcla dos texturas de MakeHuman con el mismo mapa UV (clara y oscura) para lograr tonos intermedios.
+  - Rig "Game engine" con los huesos del simulador renombrados (`HUESOS`): `pelvis`→`spine`, `spine_03`→`chest`, `upperarm_l`→`shL`, etc. Los demás (dedos, clavículas) conservan su nombre.
+  - Ropa sin logos: varias prendas de MakeHuman traen su logo en la camisa. Los hombres usan prendas sin logo; a la camiseta de mujer se le borra en la textura (`LOGOS`). También se evitaron el pantalón muy corto y el top corto.
+- `blender/generar_escenarios.py` arma los cuatro escenarios en Blender (cuarto y muebles simples con biseles y materiales procedurales, más muebles y enseres de la Asset Store; ver Unity abajo), hornea su luz con Cycles y los exporta a `modelos/escenario_<caso>.glb`.
+  - Las posiciones se escriben en coordenadas de scene.js y `P()` las pasa a Blender. El sol apunta como la luz principal de scene.js para que la persona y el cuarto tengan la misma luz.
+  - Hornea dos texturas por escenario (piso y resto): luz difusa (suavizada para quitar el ruido) × color. Borra antes las caras que no se ven (contra el piso o la pared).
+  - Espejo, grifos, bombillas, pantalla de la lámpara y charco no se hornean (`dinamico`): conservan su material y brillan o reflejan en vivo.
+  - Objetos de `modelos/objetos/` (los aportó la persona a cargo; GLB de Blender con textura pequeña) se colocan con `objeto_glb`: son dinámicos, pero están en la escena al hornear y dejan su sombra. Cada uno sigue el texto del caso en `content.js`:
+    - Baño: la jeringuilla y el papelito doblado del texto.
+    - Sala: pastillas sueltas y una cajetilla en la mesa.
+    - Cuarto: un frasco y pastillas en la mesa de noche.
+    - Callejón: una botella tirada junto al contenedor.
+    - Sin jeringuilla en el callejón: el texto no la menciona y no se quiere sumar estigma a la escena de la calle.
+  - `--texturas carpeta` guarda las texturas horneadas en PNG para revisarlas. `--muestras` y `--tam` controlan la calidad.
+- `blender/generar_personaje.py` y `modelos/persona.glb` son el personaje simple de la fase 2. El simulador ya no lo usa; queda como referencia.
+- Unity: el proyecto `%USERPROFILE%\UnityProjects\SimuladorDSPR-assets` (Unity 6000.6.8f1, fuera de OneDrive) solo guarda los assets de la Asset Store de la persona a cargo, para que Blender los lea. El simulador sigue siendo web.
+  - `generar_escenarios.py` lee de su carpeta `Assets` (`--unity`) los FBX y materiales de "House Interior - Free" (nappin) y "Appliances - SnapNSet Starter" (Alstra Infinite) con `mueble()`. Los escala a medidas reales (los de House Interior vienen a casi el doble, cada uno distinto), simplifica los muy densos y los hornea con el cuarto: la textura de color se lee de su UV original y la luz va a una UV nueva.
+  - Objetos aportados por la persona a cargo (`modelos/objetos/`): en el baño, rollo de papel de baño y destapador; en la sala del caso 2, un cubo de Rubik (`nitido=True` para que sus cuadros no se vean borrosos).
+  - Hoy: baño → inodoro, dispensador de jabón y lavadora; sala → sofá y lámpara de pie; cuarto → cama con cabecera, gavetero y cafetera; callejón → una secadora tirada junto al contenedor. Los "Fan" de Appliances son campanas de cocina, no abanicos.
+  - No se usan: Random Behavior System y NPC AI Engine (Convai) son C#. Convai además manda la voz a la nube y necesita una clave, así que la persona a cargo decidió no usarlo. Su papel lo hacen `EMOCIONES` en `scene.js` y `DESPERTAR` en `content.js`. "1 toon teen" es estilo caricatura y no pega con las personas MPFB.
+  - Para correr el script desde una copia en otra carpeta (rutas cortas), pasa `--objetos` con la carpeta de `modelos/objetos`.
+
+## Reglas que no se cambian sin fuente
+- **Protocolo DSPR.** Viene de la cápsula "Administración correcta de la naloxona", el afiche "Identifica, actúa y salva una vida" y el folleto de naloxona:
+  1. Llamar al 9-1-1 y quedarse con la persona.
+  2. Identificar la tríada: pupilas contraídas o puntiformes, depresión respiratoria y pérdida de conciencia. Otros signos: cianosis en labios y uñas, piel fría y cuerpo flojo.
+  3. Poner a la persona boca arriba y abrir la vía aérea subiendo la barbilla. RCP si es necesaria.
+  4. Abrir el empaque. No se prueba ni se bate el dispositivo.
+  5. Pulgar en el émbolo; dedo índice y del corazón a cada lado de la boquilla.
+  6. Introducir la boquilla en una fosa nasal hasta que los dedos rocen la nariz y presionar el émbolo rápido y firme. Toda la dosis va en una sola fosa nasal.
+  7. Posición de rescate. Esperar 3 minutos antes de una segunda dosis. No dejar sola a la persona.
+- **Ley 35 de Puerto Rico.** Protege a quien, de buena fe, administra naloxona (según el folleto DSPR).
+- **AHA 2025.** Si la persona no respira o solo jadea, se hace RCP sin demorarla por la naloxona.
+- **CDC (xilazina).** La naloxona no revierte la xilazina, pero se administra igual.
+- Cualquier cambio de contenido clínico necesita una fuente citada en el commit y revisión de la persona a cargo del proyecto.
+
+## Marca DSPR
+- Colores: azul marino `#1C2854`, dorado `#e5bc44`, celeste `#8ACFF3`, gris `#cccccc`.
+- Tipografía: Poppins para el texto. Trajan Pro para títulos; Cinzel es el respaldo web porque Trajan Pro tiene licencia de Adobe.
+- Logos: `src/assets/logo_blanco.webp` para la banda azul y `logo_color.webp` para fondos claros. No se deforman ni se recolorean.
+- Idioma: español formal de Puerto Rico, lenguaje sencillo para la comunidad, sin estigma. Se dice "persona que usa sustancias", no "adicto".
+
+## Contactos (no inventar otros)
+- Navegadores (NaPro): 787-765-2929, ext. 2253
+- Educación, talleres y naloxona: 787-765-2929, ext. 3777 o 3682
+- opioides@salud.pr.gov · www.salud.pr.gov/opioides
+- Línea PAS (ASSMCA): 1-800-981-0023 o 988
+
+## Cómo trabajar
+- `npm install` una vez. Después:
+  - `npm test`: Vitest debe pasar completo (buena respuesta = sobrevive; no hacer nada = muerte; tardío sin RCP = muerte). Si cambia un valor esperado de `engine.test.js`, el modelo clínico cambió: hace falta fuente y revisión. Si falla una propiedad de `engine.propiedades.test.js`, el cambio contradice el protocolo (por ejemplo, dar naloxona antes saldría peor): no se ajusta la prueba sin revisión.
+  - `npm run calibrar`: tabla de desenlaces para comparar a ojo.
+  - `npm run dev`: servidor de desarrollo. `npm run build` → `dist/index.html`. `npm run preview`: sirve el build.
+- Probar en navegador con Playwright, incluido el ancho de teléfono (400 px), sin errores en la consola.
+
+## Hoja de ruta (una fase por sesión)
+1. ✅ **Migrar a Vite + Three.js moderno (ES modules).** Completada en la v3. `engine.js` queda como módulo puro con pruebas en Vitest. La interfaz y la escena se separan en módulos. Se mantiene un build que genere un solo HTML (vite-plugin-singlefile) para compartir sin servidor.
+2. ✅ **Personaje GLB.** Completada en la v3. En la v2, sentada, las piernas atravesaban el piso y, de lado, el brazo de abajo también; se corrigieron esos ángulos de `POSES`. Lo que pedía la fase: cargar `modelos/persona.glb` con GLTFLoader. Mapear las poses de `scene.js` (`POSES`) a los huesos del GLB, que ya tienen los mismos nombres. La cianosis se hace cambiando el color del material "Piel" y de los labios. Hay que agregar ojos, párpados y labios como mallas hijas del hueso `head`.
+3. ✅ **Personaje realista.** Completada en la v3: tres hombres, dos mujeres, dos adolescentes y dos adultos mayores, con tonos de piel de claro a oscuro. La geometría ya va comprimida con meshopt. Lo que pedía la fase: generar uno con MPFB2 (MakeHuman para Blender, salida CC0), con el rig "Game engine". Renombrar sus huesos a los del simulador y exportar a GLB. Hacer variantes de piel, cuerpo y ropa para representar la diversidad de Puerto Rico.
+4. **Animación y sonido.** Respiración, ronquido y gorgoteo, jadeo agónico, compresiones con manos del rescatista, vómito, y despertar con abstinencia (ya hay conducta al azar y conversación al despertar; falta el sonido). Los sonidos arrancan solo después de que la persona toca un botón.
+5. **Evaluación.** Prueba corta antes y después del simulador. Guardar decisiones, tiempos y desenlace para exportarlos a CSV o REDCap, sin datos que identifiquen a la persona.
+6. **Opcional:** WebXR para visores de realidad virtual y modo proyector para talleres.
+
+## Ejemplos de lo que se le puede pedir a Claude Code
+- "Lee CLAUDE.md y ejecuta la fase 1. Corre las pruebas del motor antes y después."
+- "Fase 2: conecta modelos/persona.glb y verifica las cuatro poses con capturas de Playwright."
+- "Agrega un caso 5 de benzodiacepinas con alcohol: respuesta parcial a la naloxona. Calibra con `npm run calibrar` y agrega sus escenarios a `src/escenarios.js`."

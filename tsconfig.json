@@ -1,0 +1,26 @@
+{
+  // TypeScript estricto para el simulador con árbol (src/sim, src/arbol, src/i18n, src/content, src/visual).
+  // El código clásico en JavaScript (ui.js, scene.js, engine.js...) no se revisa todavía: allowJs deja que el
+  // código nuevo lo importe, y engine.d.ts le da tipos al motor.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}
