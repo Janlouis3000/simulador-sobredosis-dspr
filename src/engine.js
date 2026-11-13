@@ -12,6 +12,9 @@ const T_LIMIT = 1200;        // 20 min
 const DOSES = 2;
 
 function createSim(caseId) {
+  if (!Object.hasOwn(CASES, caseId)) {
+    throw new RangeError(`Caso de simulación desconocido: ${String(caseId)}`);
+  }
   const c = CASES[caseId];
   return {
     caseId, t: 0, o2: c.o2, opioid: c.opioid, rise: c.rise, cap: c.cap, xyl: c.xyl,

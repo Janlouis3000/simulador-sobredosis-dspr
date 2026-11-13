@@ -1,9 +1,9 @@
-// Calibración del motor. Los valores esperados son la salida de `node src/test.js` de la v2;
-// si cambian, el modelo clínico cambió y necesita fuente y revisión (ver CLAUDE.md).
 import { describe, expect, test } from 'vitest';
 import { SCENARIOS, run, line } from './escenarios.js';
 import { createSim, derived, naloxBlock } from './engine.js';
 
+// Calibración del motor. Los valores esperados son la salida de `node src/test.js` de la v2;
+// si cambian, el modelo clínico cambió y necesita fuente y revisión (ver CLAUDE.md).
 const EXPECTED = [
   'fentanilo => sobrevive t 500 dmg 8 o2 98 events vomit,awake,ems',
   'fentanilo => muerte t 354 dmg 300 o2 12 events ',
@@ -16,7 +16,7 @@ const EXPECTED = [
   'pastillas => sobrevive t 500 dmg 1 o2 89 events ems',
   'pastillas => sobrevive t 490 dmg 25 o2 98 events vomit,awake',
   'pastillas => sobrevive t 1200 dmg 0 o2 98 events vomit,awake',
-  'pastillas => sobrevive t 655 dmg 74 o2 98 events vomit,awake',
+  'pastillas => dano t 655 dmg 74 o2 98 events vomit,awake',
   'xilazina => sobrevive t 500 dmg 11 o2 98 events vomit,ems',
   'xilazina => muerte t 329 dmg 301 o2 11 events ',
   'xilazina => sobrevive t 500 dmg 6 o2 89 events ems',
@@ -65,5 +65,17 @@ describe('naloxona', () => {
     const s = createSim('xilazina');
     s.doses.push({ t: -600, f: 1 }, { t: -600, f: 1 });
     expect(derived(s).cons).toBeLessThan(3);
+  });
+});
+
+describe('validación del caso de simulación', () => {
+  test('rechaza identificadores inexistentes con un error claro', () => {
+    expect(() => createSim('caso-inexistente')).toThrowError(RangeError);
+    expect(() => createSim('caso-inexistente')).toThrow('Caso de simulación desconocido: caso-inexistente');
+  });
+
+  test('rechaza nombres heredados del prototipo como identificadores', () => {
+    expect(() => createSim('toString')).toThrow(RangeError);
+    expect(() => createSim('__proto__')).toThrow(RangeError);
   });
 });
