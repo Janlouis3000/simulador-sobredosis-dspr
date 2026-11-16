@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador de Respuesta a Sobredosis</title>
+<link rel="icon" href="data:,">
+<meta name="description" content="Simulador educativo de respuesta a sobredosis por opioides. División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas, Departamento de Salud de Puerto Rico.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Poppins:wght@400;500;600;700&display=swap">
+  <script type="module" crossorigin src="./assets/index-CPJYv1nG.js"></script>
+  <link rel="modulepreload" crossorigin href="./assets/content-BMtIoUF7.js">
+  <link rel="modulepreload" crossorigin href="./assets/rolldown-runtime-4tVxZq34.js">
+  <link rel="modulepreload" crossorigin href="./assets/scene-QQ-7Z7_F.js">
+  <link rel="stylesheet" crossorigin href="./assets/content-DAIHYXyu.css">
+</head>
+<body>
+<div role="note" style="background:#e5bc44;color:#1C2854;font:600 14px/1.4 Poppins,Segoe UI,Arial,sans-serif;text-align:center;padding:8px 16px">Versión de prueba para revisión del equipo de la División. No es una publicación oficial del Departamento de Salud.</div>
+<!-- Solo se ve si src/main.js no cargó (este archivo abierto con doble clic). styles.css lo oculta. -->
+<div id="src-warning" style="background:#e5bc44;color:#1C2854;font:600 16px/1.4 Poppins,sans-serif;padding:14px 16px;text-align:center">
+  Este es el archivo fuente del simulador y no funciona con doble clic.
+  Abre <b>dist/index.html</b>, el archivo para compartir, o corre <b>npm run dev</b>.
+</div>
+<header class="band gut">
+  <div class="wrap">
+    <img src="./assets/logo_blanco-C9ZhWO-F.webp" alt="Departamento de Salud, Gobierno de Puerto Rico" width="124" height="54">
+    <div class="div-name"><small>Programa de opioides y sustancias</small>División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas</div>
+  </div>
+</header>
+
+<main class="wrap gut">
+
+<!-- ================= INICIO ================= -->
+<section id="screen-intro">
+  <div class="hero">
+    <div class="hero-text">
+      <span class="eyebrow">Simulador de respuesta a sobredosis</span>
+      <h1>Identifica, actúa y salva una vida</h1>
+      <p class="lead">Encuentras a una persona que no responde. Tú decides qué hacer y en qué orden. Cada decisión cambia lo que le pasa a su cuerpo, segundo a segundo. Al final verás el resultado, la gráfica de su oxígeno y qué pudiste hacer distinto.</p>
+    </div>
+    <div class="panel">
+      <h3>Tríada de la sobredosis por opioides</h3>
+      <div class="triad">
+        <div><svg viewBox="0 0 52 40" width="52" height="40"><path d="M3 20 Q26 -2 49 20 Q26 42 3 20Z" fill="#fff" stroke="#1C2854" stroke-width="2.5"/><circle cx="26" cy="20" r="9" fill="#6b4a2f"/><circle cx="26" cy="20" r="2" fill="#111"/></svg>Pupilas contraídas o pequeñas</div>
+        <div><svg viewBox="0 0 52 40" width="52" height="40"><path d="M26 6 V20 M26 20 Q18 14 12 18 Q6 26 9 34 Q14 37 20 33 Q24 30 24 22 M26 20 Q34 14 40 18 Q46 26 43 34 Q38 37 32 33 Q28 30 28 22" fill="none" stroke="#1C2854" stroke-width="2.5" stroke-linecap="round"/></svg>Problemas para respirar</div>
+        <div><svg viewBox="0 0 52 40" width="52" height="40"><circle cx="10" cy="28" r="6" fill="#1C2854"/><rect x="17" y="24" width="30" height="9" rx="4.5" fill="#1C2854"/><text x="34" y="16" font-size="12" font-weight="700" fill="#e5bc44" font-family="Poppins, sans-serif">Z z</text></svg>No responde</div>
+      </div>
+      <p class="triad-cap">Otros síntomas: uñas y labios violeta, piel fría y cuerpo flojo.</p>
+    </div>
+  </div>
+
+  <div class="intro-grid">
+    <div class="agroup">
+      <h3>1. Escoge el caso</h3>
+      <div class="cases" id="cases"></div>
+    </div>
+    <div class="agroup">
+      <h3>2. Ajustes</h3>
+      <div class="settings">
+        <label class="toggle"><input type="checkbox" id="opt-realtime">
+          <span><b>Tiempo real</b><small>El reloj sigue corriendo mientras piensas. Apagado, el reloj se detiene entre decisiones.</small></span></label>
+        <label class="toggle"><input type="checkbox" id="opt-o2" checked>
+          <span><b>Mostrar oxígeno y gráficas</b><small>Ayuda de adiestramiento. En la vida real no puedes ver el oxígeno.</small></span></label>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="btn-start" disabled>Comenzar</button>
+      <span class="note" id="start-hint">Escoge un caso para comenzar.</span>
+    </div>
+
+    <div class="division" id="division-intro"></div>
+
+    <p class="note">Basado en los materiales educativos del Departamento de Salud (cápsula "Administración correcta de la naloxona", afiche "Identifica, actúa y salva una vida" y folleto de naloxona) y en las guías de SAMHSA, la American Heart Association y los CDC. Los tiempos y signos están simplificados para el adiestramiento. No sustituye un curso certificado de RCP. En una emergencia real, llama al 9-1-1.</p>
+  </div>
+</section>
+
+<!-- ================= SIMULACIÓN ================= -->
+<section id="screen-sim" hidden>
+  <div class="topbar">
+    <div>
+      <span class="eyebrow" id="sim-tag">Caso</span>
+      <h2 id="sim-title">—</h2>
+    </div>
+    <div class="clocks">
+      <div class="clock"><span class="lbl">Tiempo transcurrido</span><span class="val" id="clk">00:00</span></div>
+      <div class="clock"><span class="lbl">Ambulancia</span><span class="val off" id="ems">Sin llamar</span></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="stage" id="stage">
+        <span class="chip place" id="scene-caption">—</span>
+        <div class="cams">
+          <button type="button" id="cam-wide" aria-pressed="true">Vista general</button>
+          <button type="button" id="cam-face" aria-pressed="false">Cara</button>
+        </div>
+        <span class="chip doing" id="doing" hidden></span>
+        <div class="alarm" id="alarm"></div>
+      </div>
+      <div class="charts" id="live-charts">
+        <div class="chart"><div class="ttl"><b>Oxígeno en sangre (%)</b><span>Zona de peligro bajo 85 %</span></div><svg id="ch-o2"></svg></div>
+        <div class="chart"><div class="ttl"><b>Respiraciones por minuto</b><span>Normal: 12 a 20</span></div><svg id="ch-rr"></svg></div>
+      </div>
+      <h3>Lo que pasa</h3>
+      <div class="feed" id="feed" aria-live="polite"></div>
+    </div>
+
+    <div class="panel">
+      <div class="agroup">
+        <h3>Lo que observas</h3>
+        <div class="signs">
+          <div class="sign"><span class="k">Pupilas<span class="triad-tag">TRÍADA</span></span><span class="v unknown" id="s-pupil">Sin evaluar</span></div>
+          <div class="sign"><span class="k">Respiración<span class="triad-tag">TRÍADA</span></span><span class="v unknown" id="s-breath">Sin evaluar</span></div>
+          <div class="sign"><span class="k">¿Responde?<span class="triad-tag">TRÍADA</span></span><span class="v unknown" id="s-resp">Sin evaluar</span></div>
+          <div class="sign"><span class="k">Labios y uñas</span><span class="v" id="s-color">—</span></div>
+          <div class="sign"><span class="k">Piel y cuerpo</span><span class="v" id="s-body">—</span></div>
+          <div class="sign"><span class="k">Sonidos</span><span class="v" id="s-sound">—</span></div>
+          <div class="sign"><span class="k">Posición</span><span class="v" id="s-pos">Boca arriba</span></div>
+        </div>
+      </div>
+      <div class="o2" id="o2box">
+        <div class="r"><span>Oxígeno en sangre (solo adiestramiento)</span><span class="num" id="o2num">—</span></div>
+        <div class="track"><div class="fill" id="o2fill"></div><div class="danger"></div></div>
+      </div>
+      <div class="kit">Tu kit de naloxona (Narcan 4 mg nasal): <span class="dose" id="dose1"></span><span class="dose" id="dose2"></span></div>
+      <div class="progress"><i id="prog"></i></div>
+      <div class="actions" id="actions"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= RESULTADO ================= -->
+<section id="screen-result" class="result" hidden></section>
+
+</main>
+
+<footer class="wrap gut">
+  <img src="./assets/logo_color-D6ynTptb.webp" alt="Departamento de Salud, Gobierno de Puerto Rico" width="133" height="58">
+  <p>División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas · opioides@salud.pr.gov · www.salud.pr.gov/opioides · Herramienta educativa; en una emergencia llama al 9-1-1.</p>
+</footer>
+
+<div class="modal" id="modal" hidden><div class="card" id="modal-card"></div></div>
+
+</body>
+</html>
