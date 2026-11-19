@@ -4,7 +4,7 @@ Renderiza una miniatura de cada escenario horneado para la pantalla "Escoge el e
 Uso (con los GLB SIN comprimir, tal como salen de generar_escenarios.py, antes de `npm run comprimir`):
     blender --background --python blender/miniaturas_escenarios.py -- --glb carpeta_con_glb --out src/assets
 
-Salida: src/assets/escena_<caso>.webp (640 x 400). Los escenarios ya traen su luz horneada como emisión, así que
+Salida: src/assets/escena_<caso>.webp (960 x 600). Los escenarios ya traen su luz horneada como emisión, así que
 el render es rápido; un sol y un cielo suaves iluminan los objetos que no se hornean (espejo, grifos, utilería).
 """
 import bpy, sys, os, argparse
@@ -45,8 +45,8 @@ for caso, (pc, pt) in VISTAS.items():
     w.node_tree.nodes["Background"].inputs[1].default_value = 0.6
     sc.render.engine = 'CYCLES'; sc.cycles.device = 'CPU'; sc.cycles.samples = 48
     sc.cycles.use_denoising = True
-    sc.render.resolution_x, sc.render.resolution_y = 640, 400
-    sc.render.image_settings.file_format = 'WEBP'; sc.render.image_settings.quality = 82
+    sc.render.resolution_x, sc.render.resolution_y = 960, 600  # el doble de lo que mide la tarjeta: nítida en pantallas de alta densidad
+    sc.render.image_settings.file_format = 'WEBP'; sc.render.image_settings.quality = 84
     sc.render.filepath = os.path.abspath(os.path.join(args.out, f"escena_{caso}.webp"))
     bpy.ops.render.render(write_still=True)
     print("MINIATURA", sc.render.filepath, round(os.path.getsize(sc.render.filepath) / 1024), "KB")

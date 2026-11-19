@@ -62,20 +62,27 @@ const nodos: DecisionNode[] = [
     ],
   },
   {
-    id: 'operador', type: 'information', promptKey: 'nodo.operador.prompt', next: 'naloxona',
+    id: 'operador', type: 'information', promptKey: 'nodo.operador.prompt', next: 'via_aerea', requiereRevisionClinica: true,
     promptKeyPorPerfil: { cpr_trained: 'nodo.operador.cpr_trained', basic_responder: 'nodo.operador.basic_responder', unsure: 'nodo.operador.unsure' },
   },
 
-  // Demostración paso a paso (se puede omitir) y práctica de las tres decisiones de NARC_STEPS.
-  { id: 'naloxona', type: 'naloxone_practice', promptKey: 'nodo.naloxona.prompt', next: 'via_aerea', esPrimeraDosis: true },
-
+  // Vía aérea antes de la naloxona (protocolo DSPR, paso 3: boca arriba y barbilla arriba; pasos 4 a 6: naloxona).
+  // Va después de llamar al 9-1-1, así que no retrasa la activación del sistema de emergencias (AHA 2025, "Adult and
+  // Pediatric Special Circumstances of Resuscitation": la naloxona o esperar su efecto no deben retrasar la llamada ni
+  // la reanimación estándar). Si la vía aérea ya está abierta (o la persona está de lado) el paso no se repite.
+  // La respuesta incorrecta también sigue a la naloxona: no se demora la dosis para repetir la pregunta.
   {
-    id: 'via_aerea', type: 'choice', promptKey: 'nodo.via_aerea.prompt',
+    id: 'via_aerea', type: 'choice', promptKey: 'nodo.via_aerea.prompt', requiereRevisionClinica: true,
+    omitirSi: 'via_aerea_abierta', omitirA: 'naloxona',
     options: [
-      op('via_aerea', 'abrir', 'apoyo', 'correcta', { effects: { elapsedSeconds: T.abrirViaAerea, abrirViaAerea: true, posicion: 'espalda', requiredActions: ['abrir_via_aerea'] } }),
-      op('via_aerea', 'esperar', 'apoyo', 'incorrecta', { effects: { elapsedSeconds: T.esperarSinActuar, clinicalSafety: -1 } }),
+      op('via_aerea', 'abrir', 'naloxona', 'correcta', { effects: { elapsedSeconds: T.abrirViaAerea, abrirViaAerea: true, posicion: 'espalda', requiredActions: ['abrir_via_aerea'] } }),
+      op('via_aerea', 'sin_abrir', 'naloxona', 'incorrecta', { effects: { clinicalSafety: -1 } }),
     ],
   },
+
+  // Demostración paso a paso (se puede omitir) y práctica de las tres decisiones de NARC_STEPS.
+  { id: 'naloxona', type: 'naloxone_practice', promptKey: 'nodo.naloxona.prompt', next: 'apoyo', esPrimeraDosis: true },
+
   { id: 'apoyo', type: 'assessment', promptKey: 'nodo.apoyo.prompt', evalua: 'respiracion_propia', routes: { no_respira: 'rcp', respira_anormal: 'ventilar', respira_normal: 'lateral' } },
 
   {
@@ -90,7 +97,9 @@ const nodos: DecisionNode[] = [
   {
     id: 'rcp', type: 'cpr_practice', promptKey: 'nodo.rcp.prompt',
     options: [
-      op('rcp', 'rcp_30_2', 'reevaluar', 'correcta', { perfiles: ['cpr_trained'], effects: { elapsedSeconds: T.rcp, accionMotor: 'cpr', requiredActions: ['rcp'] } }),
+      // La RCP 30:2 incluye abrir la vía aérea para las 2 respiraciones: queda registrada sin otra pantalla que
+      // interrumpa la RCP. Las compresiones guiadas no la abren (ver "Pendiente de decisión clínica" en CLAUDE.md).
+      op('rcp', 'rcp_30_2', 'reevaluar', 'correcta', { perfiles: ['cpr_trained'], effects: { elapsedSeconds: T.rcp, accionMotor: 'cpr', abrirViaAerea: true, requiredActions: ['rcp', 'abrir_via_aerea'] } }),
       op('rcp', 'compresiones_guiadas', 'reevaluar', 'correcta', { perfiles: ['basic_responder', 'unsure'], effects: { elapsedSeconds: T.rcp, accionMotor: CLINICA.rutaBasica.accionMotorCompresionesGuiadas, requiredActions: ['rcp'] } }),
       // Todavía sin naloxona: darla rápido y volver a la RCP (si hay otra persona, que la dé ella).
       op('rcp', 'naloxona', 'naloxona', 'correcta', { requiere: ['sin_naloxona'] }),
@@ -163,8 +172,8 @@ const nodos: DecisionNode[] = [
 // Fase de cada paso (para el resumen al terminar una fase).
 const FASE_DE: Record<Fase, string[]> = {
   evaluar: ['aviso', 'encontrar', 'seguridad', 'responde', 'respiracion'],
-  ayuda: ['llamar', 'llamar_paro', 'operador', 'naloxona'],
-  apoyo: ['via_aerea', 'ventilar', 'rcp', 'decidir', 'lateral', 'vigilar', 'vomito', 'paro', 'pulso'],
+  ayuda: ['llamar', 'llamar_paro', 'operador', 'via_aerea', 'naloxona'],
+  apoyo: ['ventilar', 'rcp', 'decidir', 'lateral', 'vigilar', 'vomito', 'paro', 'pulso'],
   despertar: ['despierta', 'esperar', 'resultado'],
 };
 // Pista del modo guiado: textos de "retro.falta.*" que ya usa el informe.
@@ -181,7 +190,7 @@ const VISUAL: Record<string, [Ancla, Icono]> = {
   'respiracion.mirar_pecho': ['boca', 'respirar'], 'respiracion.pupilas': ['ojos', 'ojo'],
   'llamar.altavoz': ['telefono', 'telefono'], 'llamar.esperar': ['piernas', 'reloj'],
   'llamar_paro.altavoz_rcp': ['telefono', 'telefono'], 'llamar_paro.altavoz_compresiones': ['telefono', 'telefono'], 'llamar_paro.naloxona_primero': ['kit', 'naloxona'],
-  'via_aerea.abrir': ['cabeza', 'via'], 'via_aerea.esperar': ['piernas', 'reloj'],
+  'via_aerea.abrir': ['cabeza', 'via'], 'via_aerea.sin_abrir': ['kit', 'naloxona'],
   'ventilar.respiraciones': ['boca', 'respirar'], 'ventilar.operador': ['telefono', 'telefono'], 'ventilar.esperar': ['piernas', 'reloj'],
   'rcp.rcp_30_2': ['pecho', 'corazon'], 'rcp.compresiones_guiadas': ['pecho', 'corazon'], 'rcp.naloxona': ['kit', 'naloxona'], 'rcp.de_lado': ['cadera', 'lado'],
   'decidir.segunda_dosis': ['kit', 'naloxona'], 'decidir.seguir_apoyo': ['boca', 'respirar'],

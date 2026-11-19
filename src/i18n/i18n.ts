@@ -1,12 +1,11 @@
-// Textos por clave. Español de Puerto Rico es el idioma principal. Inglés queda preparado, pero sin traducción
-// aprobada: en desarrollo una clave sin traducir se marca como pendiente; en producción no se ofrece el inglés
-// hasta que esté completo, para no mostrar traducciones a medias.
+// Textos por clave. El simulador está fijo en español de Puerto Rico: no hay selector de idioma ni otra traducción
+// en uso, en desarrollo ni en producción. Los textos siguen separados por clave (es-PR.json) por si en el futuro
+// se aprueba otra traducción; en-US.json queda guardado, sin cargarse.
 import es from '../content/locales/es-PR.json';
-import en from '../content/locales/en-US.json';
 import type { Genero } from '../sim/tipos';
 
-export type Idioma = 'es-PR' | 'en-US';
-export const TEXTOS: Record<Idioma, Record<string, string>> = { 'es-PR': es, 'en-US': en };
+export const IDIOMA = 'es-PR';
+export type Idioma = typeof IDIOMA;
 const ES: Record<string, string> = es;
 
 export type Variables = Record<string, string | number>;
@@ -17,26 +16,16 @@ export function interpolar(texto: string, vars?: Variables): string {
   return texto.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 }
 
-export function traducir(idioma: Idioma, clave: string, vars?: Variables, dev = import.meta.env.DEV): string {
-  const v = TEXTOS[idioma][clave];
-  if (v !== undefined) return interpolar(v, vars);
-  const base = ES[clave];
-  if (base === undefined) {
+export function traducir(clave: string, vars?: Variables, dev = import.meta.env.DEV): string {
+  const v = ES[clave];
+  if (v === undefined) {
     if (dev) console.error(`Falta el texto "${clave}" en es-PR`);
     return clave;
   }
-  return idioma !== 'es-PR' && dev ? `⟦pendiente ${idioma}⟧ ${interpolar(base, vars)}` : interpolar(base, vars);
+  return interpolar(v, vars);
 }
 
 /** Texto con variante de género: busca "clave.m" o "clave.f". */
-export function traducirGenero(idioma: Idioma, clave: string, genero: Genero, vars?: Variables): string {
-  return traducir(idioma, `${clave}.${genero}`, vars);
-}
-
-export function idiomaCompleto(idioma: Idioma): boolean {
-  return Object.keys(ES).every((k) => TEXTOS[idioma][k] !== undefined);
-}
-
-export function idiomasDisponibles(dev = import.meta.env.DEV): Idioma[] {
-  return (['es-PR', 'en-US'] as Idioma[]).filter((i) => i === 'es-PR' || dev || idiomaCompleto(i));
+export function traducirGenero(clave: string, genero: Genero, vars?: Variables): string {
+  return traducir(`${clave}.${genero}`, vars);
 }

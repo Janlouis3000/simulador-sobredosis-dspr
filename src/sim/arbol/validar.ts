@@ -25,6 +25,7 @@ const RUTAS: Record<'respuesta' | 'respiracion' | 'respiracion_propia', Clasific
 function destinos(n: DecisionNode): string[] {
   return [
     ...(n.next ? [n.next] : []),
+    ...(n.omitirA ? [n.omitirA] : []),
     ...(n.options ?? []).map((o) => o.next),
     ...Object.values(n.routes ?? {}).filter((x): x is string => Boolean(x)),
   ];
@@ -86,6 +87,8 @@ export function validateDecisionTree(tree: DecisionTree, op: OpcionesValidacion 
         err('evaluacion_en_cadena', `La evaluación "${n.id}" lleva a otra evaluación ("${d}").`, n.id);
     }
     if (n.type === 'outcome' && (opciones.length || n.next)) err('resultado_con_salida', `El resultado "${n.id}" no debe tener salidas.`, n.id);
+    if (Boolean(n.omitirSi) !== Boolean(n.omitirA))
+      err('omitir_incompleto', `El nodo "${n.id}" necesita "omitirSi" y "omitirA" juntos.`, n.id);
     for (const o of opciones) {
       if (!o.feedbackKey) err('sin_retroalimentacion', `La opción "${o.id}" de "${n.id}" no tiene retroalimentación.`, n.id);
       // Dosis adicionales: siempre con dispositivo nuevo y después del intervalo configurado.

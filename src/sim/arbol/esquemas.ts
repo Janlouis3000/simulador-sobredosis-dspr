@@ -9,6 +9,7 @@ const clave = z.string().min(3);
 const perfil = z.enum(['cpr_trained', 'basic_responder', 'unsure']);
 const accionCritica = z.enum(['comprobar_respuesta', 'evaluar_respiracion', 'llamar_911', 'naloxona', 'abrir_via_aerea', 'apoyo_respiratorio', 'rcp', 'posicion_lateral', 'vigilar', 'no_dejar_sola', 'segunda_dosis']);
 const clasificacion = z.enum(['responde', 'no_responde', 'respira_normal', 'respira_anormal', 'no_respira']);
+const condicion = z.enum(['intervalo_dosis_cumplido', 'quedan_dispositivos', 'sin_911', 'con_911', 'no_responde', 'sin_naloxona', 'dosis_extra_si_respira', 'via_aerea_abierta']);
 
 export const EsquemaOpcion = z.object({
   id,
@@ -19,7 +20,7 @@ export const EsquemaOpcion = z.object({
   perfiles: z.array(perfil).min(1).optional(),
   ancla: z.enum(['cabeza', 'ojos', 'boca', 'pecho', 'cadera', 'mano', 'piernas', 'telefono', 'kit']).optional(),
   icono: z.enum(['mano', 'voz', 'ojo', 'respirar', 'telefono', 'naloxona', 'corazon', 'lado', 'reloj', 'gota', 'via']).optional(),
-  requiere: z.array(z.enum(['intervalo_dosis_cumplido', 'quedan_dispositivos', 'sin_911', 'con_911', 'no_responde', 'sin_naloxona', 'dosis_extra_si_respira'])).optional(),
+  requiere: z.array(condicion).optional(),
   effects: z.object({
     elapsedSeconds: z.number().int().nonnegative().optional(),
     accionMotor: z.enum(['none', 'breaths', 'cpr']).optional(),
@@ -46,6 +47,8 @@ export const EsquemaNodo = z.object({
   next: id.optional(),
   evalua: z.enum(['respuesta', 'respiracion', 'respiracion_propia']).optional(),
   routes: z.partialRecord(clasificacion, id).optional(),
+  omitirSi: condicion.optional(),
+  omitirA: id.optional(),
   requiere911: z.boolean().optional(),
   esPrimeraDosis: z.boolean().optional(),
   requiereRevisionClinica: z.boolean().optional(),

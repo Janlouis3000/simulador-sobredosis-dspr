@@ -5,9 +5,13 @@ import { CONTACTOS } from '../../content/recursos';
 import type { SimulationResult } from '../../sim/tipos';
 import { mmss, useT } from '../idioma';
 
+export interface DecisionInforme { opcion: string; explicacion: string; calidad: 'correcta' | 'aceptable' | 'incorrecta' }
+
 interface Props {
   resultado: SimulationResult;
   lecciones: string[];
+  /** Cada decisión del registro, en orden, con su explicación (también las de la práctica de naloxona). */
+  decisiones: DecisionInforme[];
   onRepetir: () => void;
   onOtro: () => void;
   onRepasar: () => void;
@@ -30,7 +34,61 @@ export function Contactos() {
   );
 }
 
-export function Informe({ resultado: r, lecciones, onRepetir, onOtro, onRepasar }: Props) {
+const GRUPOS_NAPRO = [1, 2, 3, 4];
+
+/**
+ * Bloque de la División como en el inicio del simulador clásico: el Programa de Navegadores (NaPro) en azul y los
+ * contactos al lado. Los textos son los mismos del clásico (DIVISION_HTML en content.js); aquí los contactos son
+ * enlaces reales.
+ */
+export function Navegadores() {
+  const { t } = useT();
+  return (
+    <section className="division" aria-labelledby="napro-titulo">
+      <div className="a">
+        <span className="eyebrow">{t('napro.etiqueta')}</span>
+        <h2 id="napro-titulo">{t('napro.titulo')}</h2>
+        <p>{t('napro.texto')}</p>
+        <ul>{GRUPOS_NAPRO.map((k) => <li key={k}>{t(`napro.grupo.${k}`)}</li>)}</ul>
+      </div>
+      <ul className="b">
+        {CONTACTOS.map((c) => (
+          <li key={c.id} className="contact">
+            <span>{t(c.labelKey)}{c.availabilityKey ? `, ${t(c.availabilityKey)}` : ''}</span>
+            <a href={c.href} {...(c.type === 'url' ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{c.value}</a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Tríada de la sobredosis por opioides, con los mismos dibujos y textos del inicio del simulador clásico. */
+export function Triada() {
+  const { t } = useT();
+  return (
+    <section className="panel" aria-labelledby="triada-titulo">
+      <h2 id="triada-titulo" className="triada-titulo">{t('triada.titulo')}</h2>
+      <div className="triad">
+        <div>
+          <svg viewBox="0 0 52 40" width="52" height="40" aria-hidden="true" focusable="false"><path d="M3 20 Q26 -2 49 20 Q26 42 3 20Z" fill="#fff" stroke="#1C2854" strokeWidth="2.5" /><circle cx="26" cy="20" r="9" fill="#6b4a2f" /><circle cx="26" cy="20" r="2" fill="#111" /></svg>
+          {t('triada.pupilas')}
+        </div>
+        <div>
+          <svg viewBox="0 0 52 40" width="52" height="40" aria-hidden="true" focusable="false"><path d="M26 6 V20 M26 20 Q18 14 12 18 Q6 26 9 34 Q14 37 20 33 Q24 30 24 22 M26 20 Q34 14 40 18 Q46 26 43 34 Q38 37 32 33 Q28 30 28 22" fill="none" stroke="#1C2854" strokeWidth="2.5" strokeLinecap="round" /></svg>
+          {t('triada.respirar')}
+        </div>
+        <div>
+          <svg viewBox="0 0 52 40" width="52" height="40" aria-hidden="true" focusable="false"><circle cx="10" cy="28" r="6" fill="#1C2854" /><rect x="17" y="24" width="30" height="9" rx="4.5" fill="#1C2854" /><text x="34" y="16" fontSize="12" fontWeight="700" fill="#e5bc44" fontFamily="Poppins, sans-serif">Z z</text></svg>
+          {t('triada.no_responde')}
+        </div>
+      </div>
+      <p className="triad-cap">{t('triada.otros')}</p>
+    </section>
+  );
+}
+
+export function Informe({ resultado: r, lecciones, decisiones, onRepetir, onOtro, onRepasar }: Props) {
   const { t } = useT();
   const titulo = useRef<HTMLHeadingElement>(null);
   useEffect(() => { titulo.current?.focus(); }, []);
@@ -75,6 +133,23 @@ export function Informe({ resultado: r, lecciones, onRepetir, onOtro, onRepasar 
           </dl>
         </section>
       </div>
+
+      {decisiones.length > 0 && (
+        <details className="panel decisiones">
+          <summary>{t('resultado.decisiones')}</summary>
+          <ol className="checklist">
+            {decisiones.map((d, i) => {
+              const c = d.calidad === 'correcta' ? 'ok' : d.calidad === 'aceptable' ? 'mid' : 'no';
+              return (
+                <li key={i}>
+                  <span className={`mark ${c}`} aria-hidden="true">{c === 'ok' ? '✓' : c === 'mid' ? '!' : '✕'}</span>
+                  <span><b><span className="solo-lector">{t(`resumen.${d.calidad}`)}: </span>{d.opcion}</b>{d.explicacion && <small>{d.explicacion}</small>}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </details>
+      )}
 
       {lecciones.length > 0 && (
         <section className="panel" aria-labelledby="inf-lecciones">

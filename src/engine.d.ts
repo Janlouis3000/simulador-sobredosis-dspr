@@ -1,5 +1,5 @@
-// Tipos del motor fisiológico (engine.js). El motor sigue en JavaScript y sus 44 pruebas no cambian;
-// este archivo solo le da tipos al código TypeScript que lo usa.
+// Tipos del motor fisiológico (engine.js). El motor sigue en JavaScript (pruebas en engine.test.js y
+// engine.propiedades.test.js); este archivo solo le da tipos al código TypeScript que lo usa.
 
 export type CaseId = 'fentanilo' | 'pastillas' | 'xilazina' | 'tardio';
 export type AccionMotor = 'none' | 'breaths' | 'cpr';
@@ -32,6 +32,10 @@ export interface Sim {
   cprInArrest: number;
   rosc: number | null;
   vomitAt: number | null;
+  /** Segundo en que saldrá el aviso de vómito ya desencadenado (espera s.vomitDelay desde la última dosis). */
+  vomitPending: number | null;
+  /** Ajuste de presentación: segundos mínimos entre una dosis y el aviso de vómito (VOMIT_DELAY por omisión). */
+  vomitDelay: number;
   vomitHandled: boolean;
   aspirated: boolean;
   awakeAt: number | null;
@@ -62,9 +66,18 @@ export const CASES: Record<CaseId, ParametrosCaso>;
 export const EMS_DELAY: number;
 export const T_LIMIT: number;
 export const DOSES: number;
+/** Ajuste de presentación (no clínico): 5 segundos simulados entre la dosis y el aviso de vómito. */
+export const VOMIT_DELAY: number;
+/** Hora de la última dosis que entró (f > 0) hasta ahora, o null. */
+export function lastEffectiveDose(s: Sim): number | null;
 export function createSim(caseId: CaseId): Sim;
 export function derived(s: Sim): Derivados;
 export function step(s: Sim, action: AccionMotor): void;
+/**
+ * Avanza hasta n segundos y se detiene al final del primer segundo con algún evento. Devuelve los eventos de ese
+ * segundo en orden fijo: a lo sumo uno que no termina el caso ('arrest' | 'rosc' | 'vomit' | 'awake', en ese orden de
+ * prioridad) y después a lo sumo uno que lo termina ('ems' | 'death' | 'timeout', en ese orden de prioridad).
+ */
 export function advance(s: Sim, n: number, action: AccionMotor): EventoMotor[];
 export function outcome(s: Sim): Desenlace;
 export function naloxBlock(s: Sim, t: number): number;

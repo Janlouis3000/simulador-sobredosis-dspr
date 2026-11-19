@@ -220,7 +220,7 @@ export function buildSet(scene, id) {
     for (const [w, d, x, z] of [[0.72, 0.06, 0, 0.77], [0.72, 0.06, 0, -0.77], [0.06, 1.6, 0.33, 0], [0.06, 1.6, -0.33, 0]]) mesh(box(w, 0.03, d), white, tub, [x, 0.565, z]);
     mesh(cyl(0.012, 0.012, 0.16, 12), metal, tub, [-0.22, 0.64, -0.74]);
     mesh(cyl(0.01, 0.01, 0.12, 12), metal, tub, [-0.22, 0.71, -0.68], null, [Math.PI / 2, 0, 0]);
-    mesh(box(0.34, 0.012, 0.5), mat('#e5bc44', 0.95), tub, [0.3, 0.57, 0.35], null, [0, 0, -0.25]); // toalla
+    // Sin toalla sobre el borde (se leía como una tabla de madera), igual que el escenario horneado.
     // Inodoro
     const wc = new THREE.Group(); wc.position.set(0.9, 0, -1.42); scene.add(wc);
     mesh(cyl(0.13, 0.16, 0.36), white, wc, [0, 0.18, 0.05]);
@@ -235,8 +235,9 @@ export function buildSet(scene, id) {
     for (const x of [0.02, 0.08]) mesh(box(0.012, 0.1, 0.02), metal, scene, [x, 0.55, -1.28]);
     mesh(box(0.74, 0.04, 0.49), white, scene, [0.05, 0.82, -1.5]);
     mesh(cyl(0.012, 0.012, 0.14, 12), metal, scene, [0.05, 0.9, -1.66]);
-    mesh(box(0.62, 0.8, 0.02), mat('#d9e2e6', 0.04, { metalness: 1, envMapIntensity: 4 }), scene, [0.05, 1.55, -1.735], null, null, false);
-    mesh(box(0.66, 0.84, 0.015), mat('#8a6a4a', 0.6), scene, [0.05, 1.55, -1.742], null, null, false);
+    // Espejo a la misma altura que en el escenario horneado (empieza por encima del remate del enchape).
+    mesh(box(0.62, 0.8, 0.02), mat('#d9e2e6', 0.04, { metalness: 1, envMapIntensity: 4 }), scene, [0.05, 1.72, -1.735], null, null, false);
+    mesh(box(0.66, 0.84, 0.015), mat('#8a6a4a', 0.6), scene, [0.05, 1.72, -1.742], null, null, false);
     // Alfombra de baño
     mesh(box(0.55, 0.012, 0.8), surf(rug(['#2f6f7f', '#3f8796', '#e9eef0']), [1, 1]), scene, [-0.48, 0.006, -0.55], null, null, false);
     zocalo(white); rincones();

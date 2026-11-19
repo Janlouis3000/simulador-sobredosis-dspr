@@ -36,7 +36,9 @@ export type Condicion =
   /** Todavía no se ha usado ningún dispositivo de naloxona. */
   | 'sin_naloxona'
   /** El caso permite otra dosis a quien ya respira por su cuenta pero no despierta (no en xilazina). */
-  | 'dosis_extra_si_respira';
+  | 'dosis_extra_si_respira'
+  /** La vía aérea ya está abierta: se abrió (airwayOpen) o la persona está de lado (posición de rescate). */
+  | 'via_aerea_abierta';
 
 export interface DecisionEffect {
   elapsedSeconds?: number;
@@ -108,6 +110,9 @@ export interface DecisionNode {
    */
   evalua?: 'respuesta' | 'respiracion' | 'respiracion_propia';
   routes?: Partial<Record<Clasificacion, string>>;
+  /** Si se cumple esta condición al llegar, el paso no se muestra y se sigue a `omitirA` (no se repite lo ya hecho). */
+  omitirSi?: Condicion;
+  omitirA?: string;
   /** Las opciones de este nodo que terminan el caso exigen haber llamado al 9-1-1 (lo revisa el validador). */
   requiere911?: boolean;
   /** Nodo de dosis: el validador revisa que las dosis adicionales cumplan el criterio. */

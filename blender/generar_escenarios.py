@@ -280,7 +280,9 @@ def toro(nombre, R, r, pos, mat, escala=(1, 1, 1)):
 def tina(nombre, w, h, d, pared, pos, mat):
     """Bañera hueca: fondo y cuatro paredes con biseles (pos es el centro de la caja completa)."""
     x, y, z = pos
-    caja(nombre + "_fondo", w, 0.1, d, (x, y - h / 2 + 0.05, z), mat, bisel=0.01)
+    # El fondo cabe dentro de las cuatro paredes. Si llegara hasta afuera, sus lados quedarían encimados con la
+    # cara exterior de las paredes y esa franja de abajo saldría con un tramado negro y blanco.
+    caja(nombre + "_fondo", w - 2 * pared, 0.1, d - 2 * pared, (x, y - h / 2 + 0.05, z), mat, bisel=0.0)
     # Las paredes de los lados caben entre las de las puntas, sin encajarse (las caras encimadas salen negras).
     lado = d - 2 * pared
     for i, (ww, dd, dx, dz) in enumerate(((w, pared, 0, (d - pared) / 2), (w, pared, 0, -(d - pared) / 2),
@@ -472,10 +474,15 @@ def fentanilo():
     blanco = mat_color("Porcelana", "#f4f6f6", 0.12)
     caja("Remate_fondo", X1 - X0, 0.03, 0.03, ((X0 + X1) / 2, 1.2, Z0 + 0.015), blanco, bisel=0.006)
     caja("Remate_izq", 0.03, 0.03, Z1 - Z0, (X0 + 0.015, 1.2, (Z0 + Z1) / 2), blanco, bisel=0.006)
-    tina("Banera", 0.72, 0.55, 1.6, 0.06, (-1.06, 0.275, -0.6), blanco)
-    caja("Toalla", 0.34, 0.012, 0.5, (-0.76, 0.575, -0.25), mat_tela("Toalla", "#e5bc44"), rot=(0, 0, -0.25), bisel=0.004)
+    # Bañera con ducha, pegada a la pared de fondo y a la izquierda. Sin nada encima del borde: una toalla
+    # amarilla que había ahí se leía como una tabla de madera.
+    tina("Banera", 0.72, 0.55, 1.6, 0.06, (-1.06, 0.275, -0.94), blanco)
     metal = mat_color("Metal", "#c9ced3", 0.18, 1.0)
-    cilindro("Grifo_tina", 0.012, 0.012, 0.16, (-1.28, 0.64, -1.34), metal, dinamico=True)
+    cilindro("Grifo_tina", 0.012, 0.012, 0.16, (-1.06, 0.66, -1.66), metal, rot=(math.pi / 2, 0, 0), dinamico=True)
+    # Ducha: tubo que sube por la pared de fondo, brazo y regadera.
+    cilindro("Ducha_tubo", 0.011, 0.011, 1.15, (-1.06, 1.375, -1.735), metal, dinamico=True)
+    cilindro("Ducha_brazo", 0.011, 0.011, 0.26, (-1.06, 1.95, -1.61), metal, rot=(math.pi / 2, 0, 0), dinamico=True)
+    cilindro("Ducha_regadera", 0.075, 0.03, 0.045, (-1.06, 1.925, -1.48), metal, dinamico=True)
     # Inodoro (House Interior) y lavadora (Appliances): en muchas casas de Puerto Rico la lavadora va en el baño.
     mueble("Toilet", (0.95, 0, -1.38), math.pi / 2, ("alto", 0.78))
     mueble("KA-F600_Washer_V1", (1.75, 0, -1.4), ROT_ALSTRA, ("alto", 0.85))
@@ -491,8 +498,10 @@ def fentanilo():
     caja("Tope", 0.74, 0.04, 0.49, (0.05, 0.82, -1.5), blanco, bisel=0.01)
     cilindro("Grifo", 0.012, 0.012, 0.14, (0.05, 0.9, -1.66), metal, dinamico=True)
     mueble("SoapDispenser", (0.3, 0.84, -1.6), 0.4, ("alto", 0.17), max_tris=1500)
-    caja("Espejo", 0.62, 0.8, 0.02, (0.05, 1.55, -1.735), mat_color("Espejo", "#d9e2e6", 0.04, 1.0), bisel=0.0, dinamico=True)
-    caja("Marco", 0.66, 0.84, 0.015, (0.05, 1.55, -1.742), mat_color("Marco", "#8a6a4a", 0.6), bisel=0.004)
+    # Espejo sobre el lavamanos: empieza a 1.32 m del piso (por encima del remate del enchape, que está a 1.2 m)
+    # y su centro queda a 1.72 m, a la altura de la cara de una persona de pie.
+    caja("Espejo", 0.62, 0.8, 0.02, (0.05, 1.72, -1.735), mat_color("Espejo", "#d9e2e6", 0.04, 1.0), bisel=0.0, dinamico=True)
+    caja("Marco", 0.66, 0.84, 0.015, (0.05, 1.72, -1.742), mat_color("Marco", "#8a6a4a", 0.6), bisel=0.004)
     caja("Alfombra_bano", 0.55, 0.012, 0.8, (-0.48, 0.006, -0.55), mat_alfombra("Alfombra_bano", ["#2f6f7f", "#3f8796", "#e9eef0", "#3f8796"], 8), bisel=0.004)
     # "Cerca hay una jeringuilla y un papelito doblado" (content.js): en el piso, junto a la mano derecha.
     objeto_glb("syringe_mp_1", (0.58, 0.0, 0.18), rot=(0, 0.7, 0))
@@ -539,8 +548,7 @@ def xilazina():
     for x in (0.15, 1.35):
         for z in (-1.58, -1.02):
             cilindro(f"Rueda_{x}_{z}", 0.05, 0.05, 0.04, (x, 0.05, z), mat_color("Rueda", "#1a1a1a", 0.7), rot=(0, 0, math.pi / 2))
-    # Una secadora vieja tirada junto al contenedor (Appliances).
-    mueble("KA-F600_Dryer_V1", (1.95, 0, -1.3), ROT_ALSTRA - 0.35, ("alto", 0.85))
+    # Sin enseres en el callejón: la persona a cargo pidió quitar la secadora que había junto al contenedor.
     carton = mat_color("Carton", "#a58b62", 0.95)
     caja("Caja_1", 0.45, 0.35, 0.4, (-1.1, 0.175, -1.35), carton, rot=(0, 0.3, 0), bisel=0.01)
     caja("Caja_2", 0.35, 0.28, 0.32, (-1.12, 0.49, -1.36), mat_color("Carton2", "#9a7f57", 0.95), rot=(0, -0.2, 0), bisel=0.01)

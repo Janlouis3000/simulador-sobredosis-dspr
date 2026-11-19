@@ -374,16 +374,20 @@ function openNarcanTask() {
   draw();
 }
 
+// `ev` son los eventos de un mismo segundo, en el orden fijo de advance() (engine.js): primero el que no termina el
+// caso y después el que lo termina. Si en ese segundo también llega la ambulancia (o termina el caso), no se abren
+// el diálogo del vómito ni la conversación al despertar: el resultado los taparía.
 function handleEvents(ev) {
+  const termina = ev.some((e) => ['ems', 'death', 'timeout'].includes(e));
   for (const e of ev) {
     if (S.ended) return;
     if (e === 'arrest') { say('La persona deja de respirar. Solo jadea de vez en cuando y no se mueve. Su corazón se detuvo.', 'crit'); known.breath = true; }
     else if (e === 'rosc') say('Con la RCP y la naloxona vuelve a tener pulso y empieza a respirar por su cuenta, todavía lento. Sigue sin despertar.');
     else if (e === 'vomit') {
       if (S.position === 'lado') { S.vomitHandled = true; say('Vomita. Como está de lado, el vómito sale de la boca y no se ahoga.'); }
-      else openVomit();
+      else if (!termina) openVomit();
     }
-    else if (e === 'awake') openAwake();
+    else if (e === 'awake') { if (!termina) openAwake(); }
     else if (e === 'ems') finish('ems');
     else if (e === 'death') finish('death');
     else if (e === 'timeout') finish('timeout');

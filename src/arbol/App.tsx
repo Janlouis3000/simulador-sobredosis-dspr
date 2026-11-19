@@ -5,18 +5,19 @@ import miniFentanilo from '../assets/escena_fentanilo.webp';
 import miniPastillas from '../assets/escena_pastillas.webp';
 import miniTardio from '../assets/escena_tardio.webp';
 import miniXilazina from '../assets/escena_xilazina.webp';
-import { idiomasDisponibles } from '../i18n/i18n';
-import type { Idioma } from '../i18n/i18n';
+import { IDIOMA } from '../i18n/i18n';
 import { CASOS_ARBOL, FENTANILO } from '../sim/casos/casos';
 import { crearPartida } from '../sim/interprete';
 import { calcularResultado } from '../sim/retro';
 import { PERFILES } from '../sim/tipos';
 import type { Modo, Partida, TrainingProfile } from '../sim/tipos';
-import { Contactos, Informe } from './componentes/Informe';
+import { Controles } from './componentes/Controles';
+import { Informe, Navegadores, Triada } from './componentes/Informe';
 import { DemoNaloxona } from './componentes/DemoNaloxona';
 import { Simulacion } from './componentes/Simulacion';
 import { crearContexto, leccionesDe } from './contexto';
-import { IdiomaContexto, crearTraductor } from './idioma';
+import { IdiomaContexto, TRADUCTOR } from './idioma';
+import { textoDecision } from './registro';
 
 type Pantalla = 'menu' | 'pregunta_tutorial' | 'tutorial' | 'controles' | 'escenarios' | 'modo' | 'sim' | 'repaso';
 
@@ -24,13 +25,10 @@ type Pantalla = 'menu' | 'pregunta_tutorial' | 'tutorial' | 'controles' | 'escen
 const MINIATURAS: Record<string, string> = { fentanilo: miniFentanilo, pastillas: miniPastillas, xilazina: miniXilazina, tardio: miniTardio };
 const MODOS: Modo[] = ['guiado', 'sin_guia'];
 const PASOS_TUTORIAL = [1, 2, 3, 4, 5];
-const CONTROLES = ['raton', 'tactil', 'teclado'];
 const params = new URLSearchParams(location.search);
 
 export function App() {
-  const [idioma, setIdioma] = useState<Idioma>('es-PR');
-  const traductor = useMemo(() => crearTraductor(idioma), [idioma]);
-  const { t } = traductor;
+  const { t } = TRADUCTOR;
   const [casoId, setCasoId] = useState('fentanilo');
   // Perfil predeterminado: con capacitación en RCP. Modo predeterminado: guiado (recomendado la primera vez).
   const [perfil, setPerfil] = useState<TrainingProfile>('cpr_trained');
@@ -43,7 +41,8 @@ export function App() {
   const ctx = useMemo(() => crearContexto(caso, { emocionFija: params.get('emocion') }), [caso]);
   const titulo = useRef<HTMLHeadingElement>(null);
 
-  useEffect(() => { document.documentElement.lang = idioma === 'es-PR' ? 'es' : 'en'; }, [idioma]);
+  // Siempre español de Puerto Rico (también está en arbol.html; esto lo asegura si la página se incrusta distinto).
+  useEffect(() => { document.documentElement.lang = IDIOMA; }, []);
   // Al cambiar de pantalla, el foco va a su título (teclado y lectores de pantalla).
   useEffect(() => { if (pantalla !== 'sim' && pantalla !== 'repaso') titulo.current?.focus(); }, [pantalla]);
 
@@ -67,29 +66,27 @@ export function App() {
   const botonMenu = <button type="button" className="btn" onClick={alMenu}>{t('menu.volver')}</button>;
 
   return (
-    <IdiomaContexto.Provider value={traductor}>
+    <IdiomaContexto.Provider value={TRADUCTOR}>
       <div className="arbol-app">
-        {idiomasDisponibles().length > 1 && (
-          <label className="idioma">{t('app.idioma')}{' '}
-            <select value={idioma} onChange={(e) => setIdioma(e.target.value as Idioma)}>
-              {idiomasDisponibles().map((i) => <option key={i} value={i}>{t(`app.idioma.${i}`)}</option>)}
-            </select>
-          </label>
-        )}
-
         {pantalla === 'menu' && (
           <section className="pantalla menu" aria-labelledby="pantalla-titulo">
-            <span className="eyebrow">{t('app.subtitulo')}</span>
-            <h1 id="pantalla-titulo" ref={titulo} tabIndex={-1}>{t('inicio.titulo')}</h1>
-            <p className="lead">{t('inicio.lead')}</p>
-            <div className="menu-botones">
-              <button type="button" className="btn primary" onClick={() => setPantalla(tutorialVisto ? 'escenarios' : 'pregunta_tutorial')}>{t('menu.jugar')}</button>
-              <button type="button" className="btn" onClick={() => setPantalla('tutorial')}>{t('menu.tutorial')}</button>
-              <button type="button" className="btn" onClick={() => setPantalla('controles')}>{t('menu.controles')}</button>
-              <button type="button" className="btn" onClick={() => setPantalla('repaso')}>{t('menu.naloxona')}</button>
+            {/* Mismo formato que el inicio del simulador clásico: título y tríada, y debajo el Programa de Navegadores. */}
+            <div className="hero">
+              <div className="hero-text">
+                <span className="eyebrow">{t('app.titulo')}</span>
+                <h1 id="pantalla-titulo" ref={titulo} tabIndex={-1}>{t('inicio.titulo')}</h1>
+                <p className="lead">{t('inicio.lead')}</p>
+                <div className="menu-botones">
+                  <button type="button" className="btn primary" onClick={() => setPantalla(tutorialVisto ? 'escenarios' : 'pregunta_tutorial')}>{t('menu.jugar')}</button>
+                  <button type="button" className="btn" onClick={() => setPantalla('tutorial')}>{t('menu.tutorial')}</button>
+                  <button type="button" className="btn" onClick={() => setPantalla('controles')}>{t('menu.controles')}</button>
+                  <button type="button" className="btn" onClick={() => setPantalla('repaso')}>{t('menu.naloxona')}</button>
+                </div>
+              </div>
+              <Triada />
             </div>
+            <Navegadores />
             <p className="note">{t('inicio.aviso')}</p>
-            <Contactos />
             <p className="note"><a href="./index.html">{t('app.clasico')}</a></p>
           </section>
         )}
@@ -121,9 +118,7 @@ export function App() {
         {pantalla === 'controles' && (
           <section className="pantalla" aria-labelledby="pantalla-titulo">
             <h1 id="pantalla-titulo" ref={titulo} tabIndex={-1}>{t('controles.titulo')}</h1>
-            <dl className="controles">
-              {CONTROLES.map((c) => (<div key={c}><dt>{t(`controles.${c}`)}</dt><dd>{t(`controles.${c}.texto`)}</dd></div>))}
-            </dl>
+            <Controles />
             <div className="menu-botones">{botonMenu}</div>
           </section>
         )}
@@ -136,7 +131,7 @@ export function App() {
               {Object.values(CASOS_ARBOL).map((c) => (
                 <li key={c.id}>
                   <button type="button" className="escenario" onClick={() => { setCasoId(c.id); setPantalla('modo'); }}>
-                    <img src={MINIATURAS[c.id]} alt="" width={640} height={400} />
+                    <img src={MINIATURAS[c.id]} alt="" width={960} height={600} />
                     <span className="escenario-texto">
                       <b>{t(c.tituloKey)}</b>
                       <span>{t(`caso.${c.id}.corto`)}</span>
@@ -187,6 +182,7 @@ export function App() {
           <Informe
             resultado={calcularResultado(caso, partida)}
             lecciones={leccionesDe(caso.motor)}
+            decisiones={partida.registro.map((e) => ({ ...textoDecision(ctx, e, t), calidad: e.calidad }))}
             onRepetir={comenzar}
             onOtro={() => { setPartida(null); setPantalla('escenarios'); }}
             onRepasar={() => setPantalla('repaso')}

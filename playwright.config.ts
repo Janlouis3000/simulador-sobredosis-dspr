@@ -7,7 +7,12 @@ const PUERTO = 4180;
 export default defineConfig({
   testDir: 'e2e',
   timeout: 90_000,
+  // La escena 3D (three.js y los modelos del caso) puede tardar más de los 5 s normales en aparecer cuando todas
+  // las pruebas corren a la vez.
+  expect: { timeout: 15_000 },
   fullyParallel: true,
+  // Cada prueba abre Edge con WebGL y los modelos 3D: con muchos a la vez se acaba la memoria del equipo.
+  workers: 3,
   reporter: [['list']],
   use: { baseURL: `http://localhost:${PUERTO}/`, channel: 'msedge', trace: 'off' },
   webServer: {

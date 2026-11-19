@@ -60,6 +60,8 @@ export function cumple(ctx: Contexto, p: Partida, c: Condicion): boolean {
     case 'sin_911': return p.sim.called911 === null;
     case 'con_911': return p.sim.called911 !== null;
     case 'no_responde': return clasificarRespuesta(p.sim) === 'no_responde';
+    // Igual que el motor: de lado, la vía aérea cuenta como abierta.
+    case 'via_aerea_abierta': return p.sim.airwayOpen || p.sim.position === 'lado';
   }
 }
 
@@ -88,18 +90,26 @@ function llamar(p: Partida): void {
   sumar<AccionCritica>(p.acciones, 'llamar_911');
 }
 
-/** Avanza el motor; devuelve el primer evento (el motor se detiene ahí, como en el simulador clásico). */
-function correr(p: Partida, seg: number, accion: AccionMotor | undefined): EventoMotor | null {
-  if (seg <= 0) return null;
-  const ev = advance(p.sim, seg, accion ?? 'none');
-  return ev[0] ?? null;
+/** Avanza el motor; devuelve los eventos del segundo en que se detuvo (vacío si no hubo ninguno). */
+function correr(p: Partida, seg: number, accion: AccionMotor | undefined): EventoMotor[] {
+  if (seg <= 0) return [];
+  return advance(p.sim, seg, accion ?? 'none');
 }
 
-function esperarHastaEvento(p: Partida): EventoMotor {
+function esperarHastaEvento(p: Partida): EventoMotor[] {
   for (;;) {
     const ev = advance(p.sim, CLINICA.tiempos.pasoEsperaEms, 'none');
-    if (ev.length) return ev[0] as EventoMotor;
+    if (ev.length) return ev;
   }
+}
+
+/**
+ * De los eventos de un mismo segundo (advance() los da en orden fijo), el que decide a qué nodo ir: el que termina
+ * el caso (llega la ambulancia, muerte o fin del tiempo), si hay uno; si no, el primero. Así, si la ambulancia llega
+ * en el mismo segundo en que la persona vomita o despierta, el caso termina ahí y no un paso después.
+ */
+export function eventoPrincipal(ev: readonly EventoMotor[]): EventoMotor | null {
+  return ev.find((e) => TERMINAN.includes(e)) ?? ev[0] ?? null;
 }
 
 /** Va a un nodo. Resuelve evaluaciones con el motor y las interrupciones. */
@@ -108,6 +118,8 @@ function irA(ctx: Contexto, p: Partida, destino: string, evento: EventoMotor | n
   let id = destino;
   for (let vueltas = 0; vueltas < 20; vueltas++) {
     const n = nodo(ctx, id);
+    // Un paso que ya se hizo no se repite (por ejemplo, abrir la vía aérea si ya está abierta).
+    if (n.omitirSi && n.omitirA && cumple(ctx, p, n.omitirSi)) { id = n.omitirA; continue; }
     if (id === 'lateral') sumar(p.flags, 'llego_lateral');
     if (n.type === 'assessment') {
       const clas = n.evalua === 'respuesta' ? clasificarRespuesta(p.sim) : clasificarRespiracion(p.sim, n.evalua === 'respiracion_propia');
@@ -133,15 +145,16 @@ function irA(ctx: Contexto, p: Partida, destino: string, evento: EventoMotor | n
 }
 
 /** Después de una acción: si el motor produjo un evento, salta a su nodo; si no, sigue al destino normal. */
-function continuar(ctx: Contexto, p: Partida, evento: EventoMotor | null, normal: string): Partida {
-  if (evento === 'vomit' && p.sim.position === 'lado') {
+function continuar(ctx: Contexto, p: Partida, eventos: EventoMotor[], normal: string): Partida {
+  const evento = eventoPrincipal(eventos);
+  if (eventos.includes('vomit') && p.sim.position === 'lado') {
     // De lado el vómito sale de la boca: no hace falta decidir nada.
     p.sim.vomitHandled = true;
     sumar(p.flags, 'vomito_de_lado');
     p.observaciones.push({ t: p.sim.t, clave: 'obs.evento.vomito_de_lado' });
-    return irA(ctx, p, normal, evento);
+    if (evento === 'vomit') return irA(ctx, p, normal, evento);
   }
-  if (evento === 'arrest') sumar(p.flags, 'hubo_paro');
+  if (eventos.includes('arrest')) sumar(p.flags, 'hubo_paro');
   const destino = evento ? (ctx.arbol.interrupciones[evento] ?? normal) : normal;
   return irA(ctx, p, destino, evento);
 }
@@ -177,10 +190,11 @@ export function elegir(ctx: Contexto, p0: Partida, opcionId: string): Partida {
 
   if (e.irse) {
     p.sim.left = true;
-    let ev: EventoMotor;
-    do { ev = esperarHastaEvento(p); } while (!TERMINAN.includes(ev));
+    // Sin nadie al lado, los eventos que no terminan el caso (por ejemplo, vomitar) pasan sin que nadie decida.
+    let ev: EventoMotor[];
+    do { ev = esperarHastaEvento(p); } while (!ev.some((x) => TERMINAN.includes(x)));
     p.fin = 'irse';
-    return irA(ctx, p, o.next, ev);
+    return irA(ctx, p, o.next, eventoPrincipal(ev));
   }
   if (e.esperarEms) {
     const ev = esperarHastaEvento(p);

@@ -35,9 +35,25 @@ fieldset.panel legend { font-weight: 600; color: var(--navy); padding: 0 6px; }
 .menu .menu-botones { display: grid; gap: 10px; max-width: 420px; }
 .menu .menu-botones .btn { font-size: 1.05rem; padding-block: 12px; }
 .tutorial { display: grid; gap: 10px; padding-left: 22px; margin: 0; font-size: 1.02rem; }
-.controles { display: grid; gap: 12px; margin: 0; }
-.controles dt { font-weight: 700; color: var(--navy); }
-.controles dd { margin: 2px 0 0; }
+/* Inicio con el formato del simulador clásico: título y tríada arriba, Programa de Navegadores debajo. */
+.pantalla.menu { max-width: none; gap: 24px; }
+.menu .hero-text { gap: 14px; }
+.arbol-app .triada-titulo { font-family: var(--font-body); font-size: .76rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--navy); margin-bottom: 10px; }
+.arbol-app .division .a h2 { font-size: 1.3rem; }
+.menu .menu-botones { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 520px; }
+.menu .menu-botones .btn.primary { grid-column: 1 / -1; }
+.division .a .eyebrow { color: var(--sky); }
+.division ul.b { list-style: none; margin: 0; }
+.division .contact a { font-size: 1.05rem; font-weight: 700; color: var(--navy); font-variant-numeric: tabular-nums; text-decoration: none; min-height: 24px; }
+.division .contact a:hover, .division .contact a:focus-visible { text-decoration: underline; }
+/* Controles: una tarjeta ilustrada por forma de usarlo. */
+.controles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.control { display: grid; gap: 8px; align-content: start; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--navy); border-radius: var(--radius); }
+.control svg { width: 100%; height: auto; display: block; background: var(--sky-soft); border-radius: 8px; }
+.arbol-app .control h2 { font-family: var(--font-body); font-size: 1.05rem; font-weight: 700; letter-spacing: 0; color: var(--navy); }
+.control p { margin: 0; font-size: .9rem; color: var(--muted); }
+.gestos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.gestos li { font-size: .8rem; font-weight: 600; color: var(--navy); background: var(--gold-soft); border-radius: 999px; padding: 3px 10px; }
 .escenarios { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .escenario { display: grid; width: 100%; padding: 0; border: 2px solid var(--navy); border-radius: 12px; overflow: hidden; background: var(--surface); cursor: pointer; text-align: left; font: inherit; color: inherit; }
 .escenario img { width: 100%; height: auto; display: block; aspect-ratio: 16 / 10; object-fit: cover; }
@@ -47,10 +63,14 @@ fieldset.panel legend { font-weight: 600; color: var(--navy); padding: 0 6px; }
 .escenario:hover, .escenario:focus-visible { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-soft); }
 
 /* ---------- Escena 3D con iconos ---------- */
-.sim-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+/* La escena ocupa la mayor parte del ancho: es lo que la persona mira; las opciones van en una columna al lado. */
+.sim-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 .sim-grid > .sim-col:only-child { grid-column: 1 / -1; } /* sin WebGL: solo la columna de texto */
 .sim-col { display: grid; gap: 12px; min-width: 0; }
-.escena3d { position: sticky; top: 8px; aspect-ratio: 16 / 11; border-radius: 12px; overflow: hidden; background: #dfe5ee; border: 1px solid var(--line); }
+.escena3d { position: sticky; top: 8px; aspect-ratio: 16 / 11; border-radius: 14px; overflow: hidden; background: #dfe5ee; border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(23, 32, 63, .16); }
+/* Viñeta suave: oscurece un poco los bordes y lleva la vista al centro de la escena. No tapa los clics. */
+.escena3d::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit; background: radial-gradient(ellipse at 50% 45%, rgba(23, 32, 63, 0) 55%, rgba(23, 32, 63, .2) 100%); }
+.escena3d .chip, .escena3d .camaras { z-index: 2; }
 .escena3d .lienzo { position: absolute; inset: 0; }
 .escena3d canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .escena3d .chip { position: absolute; left: 10px; top: 10px; background: rgba(255, 255, 255, .92); color: var(--navy); font-size: .8rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; }
@@ -61,7 +81,11 @@ fieldset.panel legend { font-weight: 600; color: var(--navy); padding: 0 6px; }
 .escena3d .camaras button[aria-pressed="true"] { background: var(--navy); color: #fff; }
 /* Icono de una opción sobre el cuerpo o un objeto. Lo coloca Escena3D con transform en cada cuadro. */
 .marca { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border-radius: 50%; border: 3px solid #fff; background: var(--navy); color: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; box-shadow: 0 2px 8px rgba(23, 32, 63, .45); visibility: hidden; animation: latir 1.8s ease-in-out infinite; }
-.marca:hover { background: var(--gold); color: var(--navy); }
+.marca { z-index: 2; }
+.marca:hover { background: var(--gold); color: var(--navy); z-index: 3; }
+/* Al pasar el puntero, el icono dice qué opción es (el mismo texto de la lista). */
+.marca::after { content: attr(data-etiqueta); position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%); width: max-content; max-width: 230px; padding: 6px 10px; border-radius: 8px; background: #fff; color: var(--navy); font: 600 .8rem/1.3 var(--font-body); text-align: left; box-shadow: 0 4px 14px rgba(23, 32, 63, .28); opacity: 0; pointer-events: none; transition: opacity .12s; }
+.marca:hover::after { opacity: 1; }
 /* Mientras se ve una acción (RCP, respiraciones), los iconos del paso siguiente se atenúan para no taparla. */
 .escena3d.haciendo .marca:not(:hover) { opacity: .45; animation: none; }
 @keyframes latir { 0%, 100% { box-shadow: 0 2px 8px rgba(23, 32, 63, .45), 0 0 0 0 rgba(229, 188, 68, .7); } 50% { box-shadow: 0 2px 8px rgba(23, 32, 63, .45), 0 0 0 9px rgba(229, 188, 68, 0); } }
@@ -78,6 +102,11 @@ fieldset.panel legend { font-weight: 600; color: var(--navy); padding: 0 6px; }
 .toggle-inline input { width: 20px; height: 20px; }
 
 .practica, .dialogo { display: grid; gap: 12px; }
+.elegiste { display: grid; gap: 6px; padding: 10px 14px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); }
+.elegiste p { margin: 0; }
+.elegiste .consecuencia { font-weight: 600; color: var(--navy); }
+.decisiones summary { cursor: pointer; font-weight: 700; color: var(--navy); min-height: 44px; display: flex; align-items: center; }
+.decisiones .checklist { margin-top: 10px; }
 .informe { display: grid; gap: 16px; }
 .tiempos { display: grid; grid-template-columns: auto auto; gap: 6px 16px; margin: 0; }
 .tiempos dd { margin: 0; font-weight: 600; }
@@ -85,12 +114,14 @@ fieldset.panel legend { font-weight: 600; color: var(--navy); padding: 0 6px; }
 .contactos ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .contactos li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
 .contactos a { color: var(--navy); font-weight: 600; }
-.idioma { justify-self: end; font-size: .9rem; }
-.idioma select { min-height: 36px; }
 
 @media (max-width: 900px) {
   .sim-grid { grid-template-columns: minmax(0, 1fr); }
   .escena3d { position: relative; top: 0; }
+}
+@media (max-width: 760px) {
+  .controles { grid-template-columns: minmax(0, 1fr); }
+  .control svg { max-width: 300px; margin-inline: auto; }
 }
 @media (max-width: 640px) {
   .escenarios { grid-template-columns: minmax(0, 1fr); }

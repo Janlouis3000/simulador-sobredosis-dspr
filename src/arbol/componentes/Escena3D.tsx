@@ -132,7 +132,7 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
       </div>
       {lista && marcas.map((m) => (
         <button
-          key={m.id} type="button" className="marca" aria-hidden="true" tabIndex={-1} title={m.etiqueta}
+          key={m.id} type="button" className="marca" aria-hidden="true" tabIndex={-1} data-etiqueta={m.etiqueta}
           ref={(el) => { if (el) botones.current.set(m.id, el); else botones.current.delete(m.id); }}
           onClick={m.onClick}
         >

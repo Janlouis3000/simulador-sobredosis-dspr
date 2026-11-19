@@ -15,6 +15,7 @@ export const Scene3D = (() => {
   let R, scene, cam, controls, clock, person, props = {}, ready = false, setGroup = null;
   let contenedor = null, observador = null; // dónde está el lienzo ahora
   let nalox = null; // animación de la naloxona en curso
+  let escenarioGLB = false; // el escenario a la vista es el horneado (true) o el procedural de respaldo (false)
   let camGoal = null; // { pos, target }
   let view = 'wide';
   const state = { pose: 'supine', anim: 'none', rr: 0, arrest: false, cyan: 0, cons: 0, vomit: false, phone: false, dosesUsed: 0, t: 0, pupil: 3.8, agit: 0, emocion: null };
@@ -164,10 +165,14 @@ export const Scene3D = (() => {
   // Si el escenario no ha cargado todavía, o no carga, se arma el escenario procedural de ambiente.js.
   const ESCENAS_GLB = import.meta.glob('../modelos/escenario_*.glb', { query: '?url', import: 'default', eager: true });
   const escenaURL = (id) => (Object.entries(ESCENAS_GLB).find(([ruta]) => ruta.endsWith(`escenario_${id}.glb`)) || [])[1];
+  // Filtro anisotrópico: las texturas se ven nítidas en ángulo rasante (el piso de losas o de madera visto desde
+  // la cámara, las alfombras, la ropa). Se limita a 8 muestras, que casi cualquier equipo soporta sin costo visible.
+  const nitida = (t) => { if (t && R) { t.anisotropy = Math.min(8, R.capabilities.getMaxAnisotropy()); t.needsUpdate = true; } };
   function prepararEscenario(model) {
     model.traverse((o) => {
       if (!o.isMesh) return;
       const m = o.material;
+      nitida(m.emissiveMap); nitida(m.map);
       if (m.emissiveMap) { m.color.set(0x000000); m.emissive.set(0xffffff); o.castShadow = false; o.receiveShadow = false; }
       else {
         o.castShadow = true; o.receiveShadow = true;
@@ -180,15 +185,18 @@ export const Scene3D = (() => {
     if (setGroup) scene.remove(setGroup);
     setGroup = new THREE.Group(); scene.add(setGroup);
     const url = escenaURL(id), listo = url && listos[url];
+    escenarioGLB = Boolean(listo);
     if (listo) {
       setGroup.add(listo.clone());
       // El piso horneado no recibe sombras en vivo: este plano invisible muestra solo la sombra de la persona.
       const sombra = new THREE.Mesh(new THREE.PlaneGeometry(4.9, 5), new THREE.ShadowMaterial({ opacity: 0.3 }));
       sombra.rotation.x = -Math.PI / 2; sombra.position.set(0.98, 0.002, 0.72); sombra.receiveShadow = true;
       setGroup.add(sombra);
+      reapoyarCharco();
       return true;
     }
     buildSet(setGroup, id);
+    reapoyarCharco();
     if (url) {
       const sceneNow = scene;
       cargar(url, prepararEscenario).then(() => { if (scene === sceneNow) ponerEscenario(id); },
@@ -201,6 +209,7 @@ export const Scene3D = (() => {
   function prepararModelo(model) {
     model.traverse((o) => {
       if (!o.isSkinnedMesh) return;
+      for (const m of [].concat(o.material)) nitida(m.map); // piel, pelo y ropa
       // Zonas de cianosis en COLOR_0 (ver generar_personajes_mpfb.py): r = labios, g = uñas, b = dedos.
       const c = o.geometry.attributes.color;
       if (c) {
@@ -343,9 +352,37 @@ vec2 pupila(vec2 uv, vec2 c) {
     // Boca arriba se pone del lado al que se gira en la posición de rescate (+x), para que no lo tape el brazo.
     if (flat.length() < 0.35) { p = h.clone().add(new THREE.Vector3(0.27, 0, -0.03)); flat.set(1, 0, 0); }
     else { flat.normalize(); p = h.clone().addScaledVector(flat, 0.2); }
-    props.vomit.position.set(p.x, 0.001, p.z);
+    props.vomit.position.set(p.x, alturaApoyo(p.x, p.z), p.z);
     props.vomit.rotation.y = Math.atan2(flat.x, flat.z);
     props.vomit.scale.setScalar(0.2);
+  }
+
+  // Altura de la superficie donde se apoya el charco en (x, z): el piso o, si hay, la alfombra que está encima.
+  // Se lanza un rayo hacia abajo contra el escenario (horneado o procedural) y se toma el punto más alto que esté
+  // cerca del piso: así una mesa o una cama al lado no cuentan. Se suma una separación para que no parpadee.
+  const SEPARACION_CHARCO = 0.002, ALTURA_MAX_APOYO = 0.06;
+  const rayo = new THREE.Raycaster(), ABAJO = new THREE.Vector3(0, -1, 0);
+  function alturaApoyo(x, z) {
+    let y = 0;
+    if (setGroup) {
+      setGroup.updateMatrixWorld(true);
+      rayo.set(new THREE.Vector3(x, ALTURA_MAX_APOYO + 0.5, z), ABAJO);
+      for (const hit of rayo.intersectObject(setGroup, true)) {
+        if (!hit.object.isMesh || hit.object.material?.isShadowMaterial || !hit.object.visible) continue;
+        if (hit.point.y <= ALTURA_MAX_APOYO && hit.point.y > y) y = hit.point.y;
+      }
+    }
+    return y + SEPARACION_CHARCO;
+  }
+  // Al cambiar de escenario (el procedural se cambia por el horneado cuando termina de cargar), el charco que ya
+  // está a la vista se vuelve a apoyar sobre la superficie nueva, en el mismo lugar junto a la boca.
+  function reapoyarCharco() {
+    if (props.vomit?.visible) props.vomit.position.y = alturaApoyo(props.vomit.position.x, props.vomit.position.z);
+  }
+  // Solo lectura, para pruebas y diagnóstico: dónde está el charco y sobre qué escenario.
+  function charco() {
+    const v = props.vomit;
+    return v ? { visible: v.visible, x: v.position.x, y: v.position.y, z: v.position.z, apoyo: alturaApoyo(v.position.x, v.position.z), escenarioGLB } : null;
   }
 
   // Sombra de contacto: elipse oscura bajo el cuerpo, de la cabeza a los tobillos.
@@ -519,14 +556,68 @@ vec2 pupila(vec2 uv, vec2 c) {
   }
 
   // ---------- Utilería ----------
+  // Dispositivo de naloxona nasal con la forma del spray de 4 mg: boquilla, cuerpo blanco con dos hombros para los
+  // dedos y dos patas, y el émbolo de color en el medio. Es genérico: sin marca ni logotipo. Queda con la punta de
+  // la boquilla en el origen apuntando a +z, el ancho en x y el grosor en y. Devuelve el émbolo (para animarlo).
+  const ROSA = '#c2185b';
+  // El kit del piso va un poco más grande que en la realidad para que se distinga en la vista general; el
+  // dispositivo en la mano va a tamaño real.
+  const ESCALA_KIT = 1.45;
+  let geoNaloxona = null;
+  function cuerpoNaloxona(g) {
+    const blanco = mat('#f6f6f4', 0.4), rosa = mat(ROSA, 0.45);
+    if (!geoNaloxona) {
+      const s = new THREE.Shape();
+      s.moveTo(-0.006, -0.028);
+      s.quadraticCurveTo(-0.022, -0.028, -0.022, -0.041);
+      s.lineTo(-0.022, -0.062); s.quadraticCurveTo(-0.022, -0.065, -0.019, -0.065);
+      s.lineTo(-0.014, -0.065); s.quadraticCurveTo(-0.011, -0.065, -0.011, -0.062);
+      s.lineTo(-0.011, -0.055); s.quadraticCurveTo(-0.011, -0.05, -0.006, -0.05);
+      s.lineTo(0.006, -0.05); s.quadraticCurveTo(0.011, -0.05, 0.011, -0.055);
+      s.lineTo(0.011, -0.062); s.quadraticCurveTo(0.011, -0.065, 0.014, -0.065);
+      s.lineTo(0.019, -0.065); s.quadraticCurveTo(0.022, -0.065, 0.022, -0.062);
+      s.lineTo(0.022, -0.041); s.quadraticCurveTo(0.022, -0.028, 0.006, -0.028);
+      s.closePath();
+      geoNaloxona = new THREE.ExtrudeGeometry(s, { depth: 0.011, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0015, bevelSegments: 3, curveSegments: 10 });
+      geoNaloxona.translate(0, 0, -0.0055); // centra el grosor
+      geoNaloxona.rotateX(Math.PI / 2);     // la silueta queda en el plano xz y el grosor en y
+    }
+    mesh(geoNaloxona, blanco, g);
+    mesh(new THREE.CapsuleGeometry(0.0052, 0.026, 6, 14), blanco, g, [0, 0, -0.0182], null, [Math.PI / 2, 0, 0]); // boquilla
+    mesh(new THREE.BoxGeometry(0.034, 0.0156, 0.006), rosa, g, [0, 0, -0.039]);                                    // franja de la etiqueta
+    const embolo = mesh(new THREE.CylinderGeometry(0.0058, 0.0058, 0.026, 16), rosa, g, [0, 0, -0.062], null, [Math.PI / 2, 0, 0]);
+    embolo.userData.z0 = -0.062;
+    return embolo;
+  }
+  // Un dispositivo en su empaque individual (blíster), en el piso.
   function narcan(x, z) {
-    const g = new THREE.Group();
-    const body = mat('#f4f4f2', 0.5), red = mat('#c8312b', 0.5);
-    mesh(new THREE.BoxGeometry(0.05, 0.016, 0.1), body, g, [0, 0.008, 0]);
-    mesh(new THREE.BoxGeometry(0.052, 0.017, 0.03), red, g, [0, 0.009, 0.025]);
-    mesh(new THREE.CylinderGeometry(0.008, 0.011, 0.04, 14), body, g, [0, 0.01, -0.07], null, [Math.PI / 2, 0, 0]);
-    g.position.set(x, 0, z); g.rotation.y = 0.5;
+    const g = new THREE.Group(), dentro = new THREE.Group();
+    dentro.position.set(0, 0.0115, 0.0375); g.add(dentro);
+    cuerpoNaloxona(dentro);
+    mesh(new THREE.BoxGeometry(0.066, 0.004, 0.098), mat('#dfe4ea', 0.35, { metalness: 0.45 }), g, [0, 0.002, 0]);
+    const burbuja = mesh(new THREE.BoxGeometry(0.054, 0.019, 0.086), mat('#ffffff', 0.08, { transparent: true, opacity: 0.22, depthWrite: false }), g, [0, 0.0135, 0]);
+    burbuja.castShadow = false;
+    g.position.set(x, 0, z); g.rotation.y = 0.5; g.scale.setScalar(ESCALA_KIT);
     scene.add(g); return g;
+  }
+  // Caja del kit, con dos dosis. La etiqueta se dibuja en un lienzo: nombre genérico, sin marca.
+  function cajaNaloxona(x, z) {
+    const c = document.createElement('canvas'); c.width = 280; c.height = 360;
+    const k = c.getContext('2d');
+    k.fillStyle = '#fbfbf9'; k.fillRect(0, 0, 280, 360);
+    k.fillStyle = ROSA; k.fillRect(236, 0, 44, 360);
+    k.textAlign = 'left'; k.textBaseline = 'alphabetic';
+    k.font = '800 40px Arial, sans-serif'; k.fillText('NALOXONA', 14, 150);
+    k.fillStyle = '#17203f'; k.font = '700 26px Arial, sans-serif'; k.fillText('SPRAY NASAL', 14, 186); k.fillText('4 mg', 14, 218);
+    k.font = '600 20px Arial, sans-serif'; k.fillText('2 dosis', 14, 300);
+    k.fillStyle = ROSA; k.beginPath(); k.arc(34, 70, 20, 0, Math.PI * 2); k.fill();
+    k.fillStyle = '#fbfbf9'; k.fillRect(30, 56, 8, 28); k.fillRect(20, 66, 28, 8);
+    const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+    const blanco = mat('#fbfbf9', 0.6), rosa = mat(ROSA, 0.6), frente = mat('#ffffff', 0.6, { map: tex });
+    const caja = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.04), [rosa, blanco, blanco, blanco, frente, blanco]);
+    caja.castShadow = true; caja.receiveShadow = true;
+    caja.scale.setScalar(ESCALA_KIT); caja.position.set(x, 0.045 * ESCALA_KIT, z); caja.rotation.y = 0.54; // el frente mira a la vista general
+    scene.add(caja); return caja;
   }
   function phone() {
     const g = new THREE.Group();
@@ -538,30 +629,43 @@ vec2 pupila(vec2 uv, vec2 c) {
 
   // ---------- Naloxona a la vista ----------
   // Dispositivo de spray nasal en la mano enguantada del rescatista. La boquilla apunta a +z para poder usar
-  // lookAt hacia la nariz. Es un dispositivo genérico (cuerpo blanco, émbolo gris), sin marca.
+  // lookAt hacia la nariz.
+  // La mano es modelos/mano_naloxona.glb (blender/generar_mano.py): una mano real con guante, posada en el agarre
+  // del protocolo, en el mismo sistema que el dispositivo y con el antebrazo hacia +y. Mientras carga, o si no
+  // carga, se usa una mano simple hecha con cápsulas (el antebrazo hacia -y).
+  const MANO_GLB = Object.values(import.meta.glob('../modelos/mano_naloxona.glb', { query: '?url', import: 'default', eager: true }))[0];
+  const prepararMano = (model) => {
+    model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+    return model;
+  };
   function dispositivoEnMano() {
-    const g = new THREE.Group();
-    const blanco = mat('#f4f4f2', 0.45), gris = mat('#9aa3b5', 0.5), guante = mat('#6fb4de', 0.55);
-    mesh(new THREE.CylinderGeometry(0.0045, 0.007, 0.03, 14), blanco, g, [0, 0, -0.015], null, [Math.PI / 2, 0, 0]); // boquilla
-    mesh(new THREE.BoxGeometry(0.05, 0.012, 0.012), blanco, g, [0, 0, -0.034]);                                      // aletas para los dedos
-    mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.045, 16), blanco, g, [0, 0, -0.062], null, [Math.PI / 2, 0, 0]); // cuerpo
-    g.userData.embolo = mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.022, 14), gris, g, [0, 0, -0.094], null, [Math.PI / 2, 0, 0]);
-    // Mano con guante: pulgar en el émbolo, índice y dedo del corazón a cada lado de la boquilla (protocolo DSPR, paso 5).
+    const raiz = new THREE.Group(), g = new THREE.Group();
+    raiz.add(g);
+    const guante = mat('#6fb4de', 0.55);
+    raiz.userData.embolo = cuerpoNaloxona(raiz);
+    raiz.userData.simple = g;
+    if (MANO_GLB) {
+      const sceneNow = scene;
+      cargar(MANO_GLB, prepararMano).then((m) => {
+        if (scene !== sceneNow) return;
+        raiz.add(m.clone()); g.visible = false; raiz.userData.real = true;
+      }, (e) => console.warn('No se pudo cargar la mano; se usa la mano simple.', e));
+    }
+    // Mano simple: pulgar en el émbolo, índice y dedo del corazón a cada lado de la boquilla (protocolo DSPR, paso 5).
     const sph = new THREE.SphereGeometry(1, 20, 14);
     const dedo = (largo, r, pos, rot) => mesh(new THREE.CapsuleGeometry(r, largo, 6, 12), guante, g, pos, null, rot);
-    dedo(0.036, 0.0075, [0.017, -0.014, -0.026], [0.25, 0, 0.1]);    // índice, por delante de la aleta
-    dedo(0.036, 0.0075, [-0.017, -0.014, -0.026], [0.25, 0, -0.1]);  // dedo del corazón
-    dedo(0.03, 0.0085, [0.004, -0.014, -0.112], [-0.5, 0, 0.15]);    // pulgar, sobre el émbolo
-    dedo(0.03, 0.0075, [0.012, -0.046, -0.04], [0, 0, Math.PI / 2]); // anular y meñique recogidos
-    dedo(0.026, 0.007, [0.012, -0.056, -0.054], [0, 0, Math.PI / 2]);
-    mesh(sph, guante, g, [0, -0.046, -0.074], [0.03, 0.02, 0.042]);  // palma
-    dedo(0.09, 0.021, [0, -0.085, -0.135], [0.95, 0, 0]);            // muñeca y antebrazo
-    g.userData.rocio = mesh(sph, new THREE.MeshBasicMaterial({ color: '#dff2fb', transparent: true, opacity: 0, depthWrite: false }), g, [0, 0, 0.012], [0.01, 0.01, 0.01]);
-    g.userData.rocio.castShadow = false;
-    g.visible = false;
-    scene.add(g); return g;
-  }
-  // Punto de una fosa nasal en el mundo (lado: -1 derecha de la persona, 1 izquierda) y hacia dónde mira la cara.
+    dedo(0.036, 0.0075, [0.016, -0.012, -0.022], [0.25, 0, 0.1]);    // índice, sobre un hombro del cuerpo
+    dedo(0.036, 0.0075, [-0.016, -0.012, -0.022], [0.25, 0, -0.1]);  // dedo del corazón, sobre el otro
+    dedo(0.03, 0.0085, [0.003, -0.012, -0.086], [-0.5, 0, 0.15]);    // pulgar, debajo del émbolo
+    dedo(0.03, 0.0075, [0.012, -0.044, -0.04], [0, 0, Math.PI / 2]); // anular y meñique recogidos
+    dedo(0.026, 0.007, [0.012, -0.054, -0.054], [0, 0, Math.PI / 2]);
+    mesh(sph, guante, g, [0, -0.045, -0.068], [0.03, 0.02, 0.04]);   // palma
+    dedo(0.09, 0.021, [0, -0.084, -0.126], [0.95, 0, 0]);            // muñeca y antebrazo
+    raiz.userData.rocio = mesh(sph, new THREE.MeshBasicMaterial({ color: '#dff2fb', transparent: true, opacity: 0, depthWrite: false }), raiz, [0, 0, 0.012], [0.01, 0.01, 0.01]);
+    raiz.userData.rocio.castShadow = false;
+    raiz.visible = false;
+    scene.add(raiz); return raiz;
+  }  // Punto de una fosa nasal en el mundo (lado: -1 derecha de la persona, 1 izquierda) y hacia dónde mira la cara.
   function nariz(lado) {
     const hq = new THREE.Quaternion(); person.J.head.getWorldQuaternion(hq);
     const fwd = (person.headFwd || new THREE.Vector3(0, 0, 1)).clone().applyQuaternion(hq);
@@ -600,9 +704,12 @@ vec2 pupila(vec2 uv, vec2 c) {
     // frente a la cara.
     const dir = n.fwd.clone().multiplyScalar(0.62).addScaledVector(n.up, -0.78)
       .addScaledVector(new THREE.Vector3(0, 1, 0), 0.7 * (1 - Math.max(0, n.fwd.y))).normalize();
-    // Los dos dedos quedan a los lados de la nariz y la palma hacia afuera de la cara: la mano llega desde arriba
-    // y el antebrazo no atraviesa el pecho.
-    m.up.copy(n.fwd).multiplyScalar(-0.78).addScaledVector(n.up, -0.62);
+    // Los dos dedos quedan a los lados de la nariz y el antebrazo sale hacia afuera de la cara, por encima del
+    // pecho (de lado, más hacia arriba): la mano llega desde arriba y no atraviesa el cuerpo. En la mano real el
+    // antebrazo va hacia +y; en la simple, hacia -y.
+    const fuera = n.fwd.clone().multiplyScalar(0.8).addScaledVector(n.up, -0.5)
+      .addScaledVector(new THREE.Vector3(0, 1, 0), 0.7 * (1 - Math.max(0, n.fwd.y)));
+    m.up.copy(fuera).multiplyScalar(m.userData.real ? 1 : -1);
     // 0.2-0.5 llega a la nariz · 0.58 presiona el émbolo · 0.6-0.78 rocío · se queda hasta 0.88 · se retira.
     const a = Math.max(0, Math.min(1, (u - 0.2) / 0.3)), suave = a * a * (3 - 2 * a);
     const sale = u > 0.88 ? (u - 0.88) / 0.12 : 0;
@@ -610,7 +717,7 @@ vec2 pupila(vec2 uv, vec2 c) {
     m.lookAt(n.p);
     m.visible = true;
     const presion = Math.max(0, Math.min(1, (u - 0.55) / 0.05));
-    m.userData.embolo.position.z = -0.094 + 0.012 * presion;
+    m.userData.embolo.position.z = m.userData.embolo.userData.z0 + 0.008 * presion;
     const r = Math.max(0, Math.min(1, (u - 0.6) / 0.18));
     m.userData.rocio.material.opacity = r > 0 && r < 1 ? 0.55 * (1 - r) : 0;
     m.userData.rocio.scale.setScalar(0.008 + 0.03 * r);
@@ -684,7 +791,7 @@ vec2 pupila(vec2 uv, vec2 c) {
     const rim = new THREE.DirectionalLight(0xffffff, 0.3 * LI); rim.position.set(0, 2, -3); scene.add(rim);
     scene.background = new THREE.Color(E.bg);
     setGroup = null; ponerEscenario(id);
-    props.n1 = narcan(0.32, -0.55); props.n2 = narcan(0.4, -0.42);
+    props.n1 = narcan(0.32, -0.55); props.n2 = narcan(0.4, -0.42); props.caja = cajaNaloxona(0.53, -0.56);
     props.phone = phone();
     props.mano = dispositivoEnMano();
     props.vomit = vomitPuddle(); scene.add(props.vomit);
@@ -780,8 +887,10 @@ vec2 pupila(vec2 uv, vec2 c) {
     // Utilería
     props.n1.visible = state.dosesUsed < 1; props.n2.visible = state.dosesUsed < 2;
     props.phone.visible = state.phone;
-    if (state.vomit && !props.vomit.visible) placeVomit();
-    props.vomit.visible = state.vomit;
+    // Mientras se ve la mano dando la naloxona, el charco espera: primero la administración, después el vómito.
+    const vomito = state.vomit && !nalox;
+    if (vomito && !props.vomit.visible) placeVomit();
+    props.vomit.visible = vomito;
     if (props.vomit.visible && props.vomit.scale.x < 1) props.vomit.scale.setScalar(Math.min(1, props.vomit.scale.x + dt * 0.7));
     updateShadow();
     if (nalox) animarNaloxona();
@@ -812,5 +921,5 @@ vec2 pupila(vec2 uv, vec2 c) {
   // "Le abres un párpado con el pulgar": abre el ojo derecho unos segundos para ver la pupila.
   function checkPupils() { if (ready && person) person.pupilCheck = state.t + 5; }
 
-  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, get view() { return view; } };
+  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, charco, get view() { return view; } };
 })();

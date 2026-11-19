@@ -4,7 +4,6 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../styles.css';
 import './arbol.css';
-import en from '../content/locales/en-US.json';
 import es from '../content/locales/es-PR.json';
 import { ARBOL } from '../sim/arbol/arbol';
 import { validateDecisionTree } from '../sim/arbol/validar';
@@ -23,7 +22,7 @@ if (window.self !== window.top) {
 }
 
 const problemas = Object.values(CASOS_ARBOL).map((caso) =>
-  validateDecisionTree(ARBOL, { caso, dialogos: DIALOGOS, textos: es, otrosIdiomas: { 'en-US': en } }));
+  validateDecisionTree(ARBOL, { caso, dialogos: DIALOGOS, textos: es }));
 const errores = problemas.flatMap((p) => p.errores);
 if (import.meta.env.DEV) for (const a of problemas.flatMap((p) => p.advertencias)) console.warn(`[árbol] ${a.codigo}: ${a.mensaje}`);
 

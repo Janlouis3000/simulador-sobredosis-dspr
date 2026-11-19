@@ -14,6 +14,7 @@ import { FASES } from '../../sim/tipos';
 import type { DecisionOption, EntradaRegistro, Fase, Modo, Partida } from '../../sim/tipos';
 import { estadoEscena, poseDe } from '../estadoEscena';
 import { mmss, useT } from '../idioma';
+import { textoDecision } from '../registro';
 import { DemoNaloxona } from './DemoNaloxona';
 import { Escena3D } from './Escena3D';
 import type { Marca } from './Escena3D';
@@ -84,8 +85,6 @@ export function Simulacion({ ctx, partida, modo, setPartida, onReiniciar, onMenu
   // En un paro la naloxona se da durante la RCP, así que el resumen de "pedir ayuda" todavía no la incluye.
   const faseDelResumen = resumen?.fase === 'ayuda' && !resumen.entradas.some((e) => e.nodo === 'naloxona') ? 'fase.ayuda_sola' : `fase.${resumen?.fase ?? 'evaluar'}`;
   const pose = poseDe(partida, anim);
-  const etiquetaDe = (e: EntradaRegistro) =>
-    e.texto?.opcion ?? t(nodo(ctx, e.nodo).options?.find((o) => o.id === e.opcion)?.labelKey ?? e.feedbackKey ?? e.opcion);
 
   return (
     <div className="sim-arbol">
@@ -130,11 +129,11 @@ export function Simulacion({ ctx, partida, modo, setPartida, onReiniciar, onMenu
           <ul className="checklist">
             {resumen.entradas.map((e, k) => {
               const c = e.calidad === 'correcta' ? 'ok' : e.calidad === 'aceptable' ? 'mid' : 'no';
-              const fb = e.texto?.fb ?? (e.feedbackKey ? t(e.feedbackKey) : '');
+              const { opcion, explicacion } = textoDecision(ctx, e, t);
               return (
                 <li key={k}>
                   <span className={`mark ${c}`} aria-hidden="true">{c === 'ok' ? '✓' : c === 'mid' ? '!' : '✕'}</span>
-                  <span><b><span className="solo-lector">{t(`resumen.${e.calidad}`)}: </span>{etiquetaDe(e)}</b>{fb && <small>{fb}</small>}</span>
+                  <span><b><span className="solo-lector">{t(`resumen.${e.calidad}`)}: </span>{opcion}</b>{explicacion && <small>{explicacion}</small>}</span>
                 </li>
               );
             })}
@@ -191,17 +190,23 @@ export function Simulacion({ ctx, partida, modo, setPartida, onReiniciar, onMenu
 }
 
 // ---------- Práctica de naloxona ----------
-function PracticaNaloxona({ ctx, partida, ir }: PropsHijo) {
+// Práctica de la naloxona. Modo guiado: después de cada decisión se explica si la técnica fue correcta. Modo sin guía:
+// solo se confirma lo que se escogió y se sigue; la explicación queda en el registro y sale en el resumen de la fase
+// y en el informe. En los dos modos se ven las consecuencias que hacen falta para seguir (un dispositivo perdido).
+function PracticaNaloxona({ ctx, partida, ir, modo }: PropsHijo) {
   const { t } = useT();
+  const guiado = modo === 'guiado';
   const yaVio = partida.flags.includes('vio_demo') || partida.sim.doses.length > 0;
   const [demo, setDemo] = useState(!yaVio);
   const [resp, setResp] = useState<number[]>([]);
   const [vista, setVista] = useState<number | null>(null);
   const foco = useRef<HTMLHeadingElement>(null);
   const retro = useRef<HTMLDivElement>(null);
+  const seguir = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (!demo) foco.current?.focus(); }, [demo, resp.length]);
-  // Al escoger, los botones se reemplazan por la explicación: el foco pasa a la explicación para no perderse.
-  useEffect(() => { if (vista !== null) retro.current?.focus(); }, [vista]);
+  // Al escoger, los botones de las opciones desaparecen: el foco pasa a la explicación (guiado) o al botón para
+  // seguir (sin guía), siempre a algo visible, para no perderse con el teclado.
+  useEffect(() => { if (vista !== null) (guiado ? retro.current : seguir.current)?.focus(); }, [vista, guiado]);
 
   if (demo) {
     return <DemoNaloxona textoFin={t('demo.terminar')} onFin={(vio) => {
@@ -224,8 +229,16 @@ function PracticaNaloxona({ ctx, partida, ir }: PropsHijo) {
       <p>{paso.q}</p>
       {elegida ? (
         <>
-          <div ref={retro} tabIndex={-1} className={`feedback ${elegida.ok ? 'ok' : perdio ? 'no' : 'mid'}`} aria-live="polite">{elegida.fb}</div>
-          <button type="button" className="btn primary" onClick={() => {
+          {guiado
+            ? <div ref={retro} tabIndex={-1} className={`feedback ${elegida.ok ? 'ok' : perdio ? 'no' : 'mid'}`} aria-live="polite">{elegida.fb}</div>
+            : (
+              <div className="elegiste" aria-live="polite">
+                <p>{t('practica.elegiste', { opcion: elegida.t })}</p>
+                {/* Consecuencia que hace falta para seguir, sin explicar la técnica: el dispositivo se perdió. */}
+                {perdio && <p className="consecuencia">{t('obs.naloxona.perdida')}</p>}
+              </div>
+            )}
+          <button ref={seguir} type="button" className="btn primary" onClick={() => {
             const todas = [...resp, vista as number];
             setVista(null);
             if (termina) { setResp([]); ir(practicarNaloxona(ctx, partida, todas), true); }

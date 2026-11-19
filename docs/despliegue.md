@@ -103,7 +103,7 @@ configurarAnalitica({ enviar: (evento, datos) => navigator.sendBeacon('/metricas
 - El caso completo solo con teclado, sin perder el foco.
 - Teléfono de 400 px, con botones de 44 px o más.
 - Dentro de un iframe, sin WebGL, y con un modelo 3D que no carga.
-- Movimiento reducido, idioma y reinicio.
+- Movimiento reducido, idioma fijo en español de Puerto Rico (sin selector) y reinicio.
 - Sin errores en la consola, con la política de seguridad activa.
 
 Las pruebas usan el Edge instalado (`channel: 'msedge'`), así que no hace falta bajar los navegadores de Playwright.

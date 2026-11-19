@@ -10,7 +10,7 @@ El `index.html` de la raíz es el código fuente y solo funciona con `npm run de
 **Simulador con árbol de decisiones (los cuatro casos):** abre `dist-arbol/arbol.html` con doble clic. Tiene menú (Jugar, Tutorial, Controles), cuatro escenarios con miniatura y dos modos: guiado (con pistas) y sin guía. Avanza paso a paso: en cada paso escoges qué hacer, con la lista de opciones o tocando los iconos sobre la persona en la escena 3D, y el cuerpo responde. Se ve la naloxona entrar en la fosa nasal, la segunda dosis si a los 3 minutos no responde, la RCP, la posición de rescate y el despertar. Incluye la demostración de la naloxona, tres perfiles de capacitación en RCP, la conversación al despertar, un resumen por fase y un informe final.
 
 ## Comandos
-- `npm test`: pruebas del motor (Vitest).
+- `npm test`: pruebas del motor y del árbol (Vitest). La calibración del motor es una prueba de regresión contra la v2: comprueba que los resultados no cambien, no que el modelo sea clínicamente válido.
 - `npm run calibrar`: tabla de desenlaces del motor.
 - `npm run dev`: servidor de desarrollo.
 - `npm run build`: genera `dist/index.html`, un solo archivo para compartir que se abre con doble clic.

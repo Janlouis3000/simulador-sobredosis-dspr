@@ -1,6 +1,7 @@
-// Contexto de idioma para los componentes: t(clave, vars) y tg(clave, género, vars).
+// Contexto de textos para los componentes: t(clave, vars) y tg(clave, género, vars). Siempre en español de
+// Puerto Rico (IDIOMA); el contexto se mantiene para que los componentes no lean el JSON directamente.
 import { createContext, useContext } from 'react';
-import { traducir, traducirGenero } from '../i18n/i18n';
+import { IDIOMA, traducir, traducirGenero } from '../i18n/i18n';
 import type { Idioma, Variables } from '../i18n/i18n';
 import type { Genero } from '../sim/tipos';
 
@@ -10,15 +11,13 @@ export interface Traductor {
   tg: (clave: string, genero: Genero, vars?: Variables) => string;
 }
 
-export function crearTraductor(idioma: Idioma): Traductor {
-  return {
-    idioma,
-    t: (clave, vars) => traducir(idioma, clave, vars),
-    tg: (clave, genero, vars) => traducirGenero(idioma, clave, genero, vars),
-  };
-}
+export const TRADUCTOR: Traductor = {
+  idioma: IDIOMA,
+  t: (clave, vars) => traducir(clave, vars),
+  tg: (clave, genero, vars) => traducirGenero(clave, genero, vars),
+};
 
-export const IdiomaContexto = createContext<Traductor>(crearTraductor('es-PR'));
+export const IdiomaContexto = createContext<Traductor>(TRADUCTOR);
 export const useT = (): Traductor => useContext(IdiomaContexto);
 
 export function mmss(seg: number): string {

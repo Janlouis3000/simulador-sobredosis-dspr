@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { ARBOL } from './arbol/arbol';
 import { CASOS_ARBOL, FENTANILO, PASTILLAS, TARDIO, XILAZINA } from './casos/casos';
 import { CLINICA } from './config/clinica';
+import { EMS_DELAY, VOMIT_DELAY } from '../engine';
 import {
-  avanzarInformacion, crearPartida, elegir, llamarEnDialogo, nodo, opcionesDisponibles, practicarNaloxona, responderDialogo, seguirDialogo,
+  avanzarInformacion, crearPartida, elegir, eventoPrincipal, llamarEnDialogo, nodo, opcionesDisponibles, practicarNaloxona, responderDialogo,
+  seguirDialogo,
 } from './interprete';
 import { faltaParaDosis } from './observaciones';
 import { alAzar, ctxDe, jugar, mejor, semilla } from './prueba-util';
@@ -98,12 +100,12 @@ describe('perfiles de capacitación', () => {
 });
 
 describe('naloxona', () => {
-  it('técnica correcta: una dosis completa y sigue a la vía aérea', () => {
+  it('técnica correcta: una dosis completa y sigue a la reevaluación de la respiración', () => {
     const p = practicarNaloxona(ctx, hasta('naloxona'), [0, 0, 0]);
     expect(p.sim.doses).toHaveLength(1);
     expect(p.sim.doses[0]?.f).toBe(1);
     expect(p.acciones).toContain('naloxona');
-    expect(p.nodo).toBe('via_aerea');
+    expect(p.nodo).toBe('ventilar'); // apoyo (evaluación) → todavía respira muy lento
   });
 
   it('dividir la dosis entre las dos fosas nasales da solo parte de la dosis', () => {
@@ -356,5 +358,140 @@ describe('recorrido al azar', () => {
     const p = elegir(ctx, sinLlamar, 'llamar');
     expect(p.sim.called911).toBe(sinLlamar.sim.t);
     if (id === 'esperar') expect(ids(p)).toContain('quedarse');
+  });
+});
+
+describe('eventos del motor en el mismo segundo', () => {
+  it('el evento que decide el nodo es el que termina el caso, si hay uno; si no, el primero', () => {
+    expect(eventoPrincipal(['vomit', 'ems'])).toBe('ems');
+    expect(eventoPrincipal(['awake', 'death'])).toBe('death');
+    expect(eventoPrincipal(['vomit'])).toBe('vomit');
+    expect(eventoPrincipal([])).toBeNull();
+  });
+
+  // Con la mejor respuesta, busca el paso en que ocurre `evento` (llega a `nodoDelEvento`). Devuelve la partida de
+  // antes de ese paso y el segundo del evento. La hora de la llamada no cambia la fisiología del motor, así que se
+  // puede mover para que la ambulancia llegue justo en ese segundo.
+  const antesDe = (nodoDelEvento: string, segundo: (p: Partida) => number | null) => {
+    const c = ctxDe(FENTANILO);
+    let p = crearPartida(c, 'cpr_trained');
+    for (let i = 0; i < 200; i++) {
+      const sig = mejor(c, p);
+      if (sig.nodo === nodoDelEvento) return { c, antes: p, t: segundo(sig) as number };
+      p = sig;
+    }
+    throw new Error(`No se llegó a ${nodoDelEvento}`);
+  };
+  const conAmbulanciaEn = (p: Partida, t: number): Partida => ({ ...p, sim: { ...p.sim, called911: t - EMS_DELAY } });
+
+  it('si la ambulancia llega en el mismo segundo en que vomita, el caso termina ahí con la llegada de la ambulancia', () => {
+    const { c, antes, t } = antesDe('vomito', (q) => q.sim.vomitAt);
+    const p = mejor(c, conAmbulanciaEn(antes, t));
+    expect(p.sim.vomitAt).toBe(t);
+    expect(p.sim.t).toBe(t);
+    expect(p.nodo).toBe('resultado');
+    expect(p.terminada).toBe(true);
+    expect(p.fin).toBe('ems');
+    expect(p.ultimoEvento).toBe('ems');
+  });
+
+  it('si la ambulancia llega en el mismo segundo en que despierta, el caso termina ahí con la llegada de la ambulancia', () => {
+    const { c, antes, t } = antesDe('despierta', (q) => q.sim.awakeAt);
+    const p = mejor(c, conAmbulanciaEn(antes, t));
+    expect(p.sim.awakeAt).toBe(t);
+    expect(p.sim.t).toBe(t);
+    expect(p.nodo).toBe('resultado');
+    expect(p.fin).toBe('ems');
+    expect(p.dialogo).toBeNull();
+  });
+
+  it('si la ambulancia llega un segundo después, primero se decide qué hacer con el vómito (como antes)', () => {
+    const { c, antes, t } = antesDe('vomito', (q) => q.sim.vomitAt);
+    const p = mejor(c, conAmbulanciaEn(antes, t + 1));
+    expect(p.nodo).toBe('vomito');
+    expect(p.terminada).toBe(false);
+    expect(p.ultimoEvento).toBe('vomit');
+  });
+});
+describe('vía aérea antes de la naloxona', () => {
+  // Orden en el registro: nodo.opción de cada decisión, en el orden en que se tomaron.
+  const pasos = (p: Partida) => p.registro.map((r) => `${r.nodo}.${r.opcion}`);
+  const primeraDosis = (p: Partida) => p.registro.findIndex((r) => r.nodo === 'naloxona');
+
+  it('respiración anormal: llamar al 9-1-1, abrir la vía aérea y después la naloxona', () => {
+    const p = jugar(ctxDe(FENTANILO), 'cpr_trained', mejor, (q) => q.sim.doses.length > 0).p;
+    const r = pasos(p);
+    const llamada = r.indexOf('llamar.altavoz'), via = r.indexOf('via_aerea.abrir'), dosis = primeraDosis(p);
+    expect(llamada).toBeGreaterThanOrEqual(0);
+    expect(via).toBeGreaterThan(llamada);   // la activación del 9-1-1 no se retrasa
+    expect(dosis).toBeGreaterThan(via);     // la vía aérea queda registrada antes de la naloxona
+    expect(p.acciones.indexOf('abrir_via_aerea')).toBeLessThan(p.acciones.indexOf('naloxona'));
+    expect(p.sim.airwayOpen).toBe(true);
+    // Abrir la vía aérea toma su tiempo configurado, una sola vez.
+    expect(r.filter((x) => x.startsWith('via_aerea.'))).toEqual(['via_aerea.abrir']);
+  });
+
+  it('respuesta incorrecta en la vía aérea: se explica, no repite la pregunta y sigue a la naloxona sin demorarla', () => {
+    const c = ctxDe(FENTANILO);
+    const antes = jugar(c, 'cpr_trained', mejor, (q) => q.nodo === 'via_aerea').p;
+    const p = elegir(c, antes, 'sin_abrir');
+    expect(p.registro.at(-1)).toMatchObject({ nodo: 'via_aerea', opcion: 'sin_abrir', calidad: 'incorrecta', feedbackKey: 'fb.via_aerea.sin_abrir' });
+    expect(p.nodo).toBe('naloxona');
+    expect(p.sim.t).toBe(antes.sim.t);
+    expect(p.sim.airwayOpen).toBe(false);
+    expect(p.acciones).not.toContain('abrir_via_aerea');
+    const fin = jugar(c, 'cpr_trained', mejor, undefined, p).p;
+    expect(calcularResultado(FENTANILO, fin).reforzar.map((x) => x.textKey)).toContain('fb.via_aerea.sin_abrir');
+  });
+
+  it('si la vía aérea ya está abierta (o está de lado), el paso no se repite', () => {
+    const c = ctxDe(FENTANILO);
+    const op = jugar(c, 'cpr_trained', mejor, (q) => q.nodo === 'operador').p;
+    for (const sim of [{ ...op.sim, airwayOpen: true }, { ...op.sim, position: 'lado' as const }]) {
+      const p = avanzarInformacion(c, { ...op, sim });
+      expect(p.nodo).toBe('naloxona');
+      expect(p.registro.some((r) => r.nodo === 'via_aerea')).toBe(false);
+    }
+    expect(avanzarInformacion(c, op).nodo).toBe('via_aerea');
+  });
+
+  it('hallazgo tardío (paro): la RCP 30:2 abre la vía aérea sin otra pantalla y la naloxona va durante la RCP', () => {
+    const p = jugar(ctxT, 'cpr_trained', mejor, (q) => q.sim.doses.length > 0).p;
+    const r = pasos(p);
+    expect(r[r.indexOf('llamar_paro.altavoz_rcp') + 1]).toBe('rcp.rcp_30_2'); // la RCP empieza enseguida
+    expect(r.some((x) => x.startsWith('via_aerea.'))).toBe(false);           // sin pantalla extra
+    expect(r.indexOf('rcp.rcp_30_2')).toBeLessThan(primeraDosis(p));
+    expect(p.acciones.indexOf('abrir_via_aerea')).toBeLessThan(p.acciones.indexOf('naloxona'));
+    expect(p.acciones.indexOf('llamar_911')).toBeLessThan(p.acciones.indexOf('rcp'));
+  });
+
+  it('hallazgo tardío con compresiones guiadas: tampoco se interrumpe la RCP (vía aérea pendiente de decisión del DSPR)', () => {
+    const p = jugar(ctxT, 'basic_responder', mejor, (q) => q.sim.doses.length > 0).p;
+    const r = pasos(p);
+    expect(r.some((x) => x.startsWith('via_aerea.'))).toBe(false);
+    expect(r.indexOf('rcp.compresiones_guiadas')).toBeLessThan(primeraDosis(p));
+    expect(p.acciones).not.toContain('abrir_via_aerea');
+  });
+});
+describe('vómito en el árbol: después de la dosis', () => {
+  it(`en 600 partidas al azar el episodio sale al menos ${VOMIT_DELAY} s después de la última dosis que entró, una sola vez`, () => {
+    let episodios = 0;
+    for (const caso of Object.values(CASOS_ARBOL)) for (const perfil of PERFILES) for (let i = 0; i < 50; i++) {
+      const c = ctxDe(caso, { azar: semilla(i + 3) });
+      const politica = alAzar(semilla(i * 17 + 11));
+      let p = crearPartida(c, perfil);
+      for (let k = 0; k < 300 && !p.terminada; k++) {
+        const q = politica(c, p);
+        if (p.sim.vomitAt === null && q.sim.vomitAt !== null) {
+          episodios++;
+          const ultima = q.sim.doses.filter((d) => d.f > 0 && d.t <= q.sim.vomitAt!).at(-1);
+          expect(ultima).toBeDefined();
+          expect(q.sim.vomitAt - (ultima as { t: number }).t).toBeGreaterThanOrEqual(VOMIT_DELAY);
+        }
+        if (p.sim.vomitAt !== null) expect(q.sim.vomitAt).toBe(p.sim.vomitAt);
+        p = q;
+      }
+    }
+    expect(episodios).toBeGreaterThan(20);
   });
 });

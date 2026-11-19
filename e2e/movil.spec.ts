@@ -19,6 +19,7 @@ test('caso 2 completo a 400 px', async ({ page }) => {
   for (const n of ['Continuar', 'Continuar']) await page.getByRole('button', { name: n }).click();
   for (const n of [/Mirar rápido/, /frotarle el centro/, /mirar el pecho/, 'Continuar', /^Llamar al 9-1-1 y poner/]) await page.getByRole('button', { name: n }).click();
   await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.getByRole('button', { name: /inclinarle la cabeza/ }).click();
   await sinScrollLateral(page, 'demostración');
   // La escena 3D cabe en la pantalla, encima de las opciones.
   const escena = await page.locator('.escena3d').boundingBox();

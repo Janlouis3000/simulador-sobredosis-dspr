@@ -33,6 +33,9 @@ test('axe sin violaciones en menús, paso, resumen, demostración, práctica, co
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByRole('button', { name: /^Llamar al 9-1-1 y poner/ }).click();
   await page.getByRole('button', { name: 'Continuar' }).click();
+  await expect(page.locator('#paso-titulo')).toHaveText('Antes de darle la naloxona, ¿cómo pones a la persona?');
+  await revisarAccesibilidad(page, 'vía aérea antes de la naloxona');
+  await page.getByRole('button', { name: /inclinarle la cabeza/ }).click();
   await revisarAccesibilidad(page, 'demostración de naloxona');
   await page.getByRole('button', { name: 'Omitir demostración' }).click();
   await page.getByRole('button', { name: /^Pulgar en el émbolo/ }).click();
@@ -110,8 +113,10 @@ test('escena 3D: los iconos sobre la persona escogen la opción y la naloxona se
   for (const n of ['Continuar', 'Continuar']) await page.getByRole('button', { name: n }).click();
   await page.getByRole('button', { name: /Mirar rápido/ }).click();
   // Tres opciones, tres iconos; el de la mano en el pecho es "llamarla fuerte y frotarle el pecho".
-  await expect(page.locator('.marca')).toHaveCount(3);
-  const mano = page.locator('.marca[title^="Llamar a la persona fuerte"]');
+  // Los iconos salen cuando la escena 3D termina de cargar (three.js y los modelos del caso): con todas las pruebas
+  // corriendo a la vez puede tardar más que los 5 s de espera normales.
+  await expect(page.locator('.marca')).toHaveCount(3, { timeout: 20_000 });
+  const mano = page.locator('.marca[data-etiqueta^="Llamar a la persona fuerte"]');
   await expect(mano).toBeVisible();
   // Los iconos no se enciman: quedan dentro de la escena y separados entre sí.
   const cajas = await page.locator('.marca').evaluateAll((ms) => ms.map((m) => { const r = m.getBoundingClientRect(); return { x: r.x, y: r.y }; }));
@@ -124,7 +129,7 @@ test('escena 3D: los iconos sobre la persona escogen la opción y la naloxona se
   // Los iconos repiten la lista: no entran en el orden de Tab ni los anuncia el lector de pantalla.
   expect(await page.locator('.marca').evaluateAll((ms) => ms.every((m) => m.getAttribute('aria-hidden') === 'true' && (m as HTMLElement).tabIndex === -1))).toBe(true);
   await page.getByRole('button', { name: /mirar el pecho/ }).click();
-  for (const n of ['Continuar', /^Llamar al 9-1-1 y poner/, 'Continuar', 'Omitir demostración', /^Pulgar en el émbolo/, 'Siguiente', /^Nada: viene/, 'Siguiente', /^Introduzco/, 'Dar la naloxona'])
+  for (const n of ['Continuar', /^Llamar al 9-1-1 y poner/, 'Continuar', /inclinarle la cabeza/, 'Omitir demostración', /^Pulgar en el émbolo/, 'Siguiente', /^Nada: viene/, 'Siguiente', /^Introduzco/, 'Dar la naloxona'])
     await page.getByRole('button', { name: n }).click();
   await expect(page.locator('.estado')).toContainText('Te quedan 1 de 2 dispositivos');
   await page.waitForTimeout(5500); // la animación de la dosis termina y la cámara vuelve
@@ -166,10 +171,15 @@ test('reiniciar el caso vuelve al principio con el tiempo en cero', async ({ pag
   await expect(page.locator('.estado')).toContainText('Tiempo: 00:00');
 });
 
-test('idioma: en producción no se ofrece el inglés mientras su traducción no esté aprobada', async ({ page }) => {
+test('idioma: siempre español de Puerto Rico, sin selector de idioma', async ({ page }) => {
   await page.goto('arbol.html');
-  await expect(page.locator('html')).toHaveAttribute('lang', 'es');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es-PR');
   await expect(page.getByLabel('Idioma')).toHaveCount(0);
+  await expect(page.locator('select')).toHaveCount(0);
+  // Tampoco aparece más adelante en el flujo.
+  await entrar(page);
+  await expect(page.locator('select')).toHaveCount(0);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'es-PR');
 });
 
 test('movimiento reducido: sin transiciones ni iconos que laten', async ({ page }) => {
@@ -204,4 +214,49 @@ test('se puede usar dentro de un iframe y avisa su altura a la página que lo co
   await expect(f.locator('.escena3d canvas')).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as unknown as { alturas: number[] }).alturas.length)).toBeGreaterThan(0);
   expect(errores).toEqual([]);
+});
+
+// Práctica de la naloxona: la misma pregunta en los dos modos. Guiado: la explicación sale enseguida. Sin guía: solo se
+// confirma lo escogido, el foco pasa al botón para seguir y la explicación llega en el resumen de la fase.
+const EXPLICACION = 'Así se sostiene: los dedos a cada lado de la boquilla y el pulgar listo para presionar.';
+async function hastaPractica(page: import('@playwright/test').Page, modo: RegExp) {
+  await page.goto('arbol.html');
+  await entrar(page, /^Fentanilo/, modo);
+  for (const n of ['Continuar', 'Continuar', /Mirar rápido/, /frotarle el centro/, /mirar el pecho/, 'Continuar', /^Llamar al 9-1-1 y poner/, 'Continuar', /inclinarle la cabeza/, 'Omitir demostración'])
+    await page.getByRole('button', { name: n }).click();
+}
+for (const [modo, etiqueta] of [['guiado', /Modo guiado/], ['sin guía', /Modo sin guía/]] as const) {
+  test(`práctica de naloxona, modo ${modo}: cuándo aparece la explicación`, async ({ page }) => {
+    const errores = vigilarConsola(page);
+    await hastaPractica(page, etiqueta);
+    await page.getByRole('button', { name: /^Pulgar en el émbolo/ }).click();
+    if (modo === 'guiado') {
+      await expect(page.locator('.practica .feedback')).toHaveText(EXPLICACION);
+      await expect(page.locator('.practica .feedback')).toBeFocused();
+    } else {
+      await expect(page.getByText(EXPLICACION)).toHaveCount(0);
+      await expect(page.locator('.practica .feedback')).toHaveCount(0);
+      await expect(page.locator('.elegiste')).toContainText('Escogiste: Pulgar en el émbolo');
+      await expect(page.getByRole('button', { name: 'Siguiente' })).toBeFocused();
+    }
+    for (const n of ['Siguiente', /^Nada: viene/, 'Siguiente', /^Introduzco/, 'Dar la naloxona']) await page.getByRole('button', { name: n }).click();
+    // Al pasar a la fase de apoyo sale el resumen de "Pedir ayuda y naloxona", con la explicación guardada.
+    await expect(page.locator('#paso-titulo')).toHaveText('Resumen: Pedir ayuda y naloxona');
+    await expect(page.locator('.paso .checklist')).toContainText(EXPLICACION);
+    await expect(page.locator('.paso .checklist')).toContainText('Poner a la persona boca arriba');
+    expect(errores).toEqual([]);
+  });
+}
+
+test('práctica de naloxona, modo sin guía: un dispositivo perdido se ve y el conteo baja', async ({ page }) => {
+  await hastaPractica(page, /Modo sin guía/);
+  await page.getByRole('button', { name: /^Pulgar en el émbolo/ }).click();
+  await page.getByRole('button', { name: 'Siguiente' }).click();
+  await page.getByRole('button', { name: /^Lo pruebas apretándolo/ }).click();
+  await expect(page.getByText('Cada dispositivo tiene una sola dosis. Al probarlo, la perdiste.')).toHaveCount(0);
+  await expect(page.locator('.elegiste .consecuencia')).toContainText('El spray se perdió en el aire');
+  const nuevo = page.getByRole('button', { name: 'Usar un dispositivo nuevo' });
+  await expect(nuevo).toBeFocused();
+  await nuevo.click();
+  await expect(page.locator('.estado')).toContainText('Te quedan 1 de 2');
 });
