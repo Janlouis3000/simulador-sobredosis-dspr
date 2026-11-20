@@ -1,10 +1,6 @@
 // Aplicación del simulador por pasos. Flujo: menú → (tutorial) → escenarios → modo y perfil → simulación → informe.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { registrar } from '../analitica';
-import miniFentanilo from '../assets/escena_fentanilo.webp';
-import miniPastillas from '../assets/escena_pastillas.webp';
-import miniTardio from '../assets/escena_tardio.webp';
-import miniXilazina from '../assets/escena_xilazina.webp';
 import { IDIOMA } from '../i18n/i18n';
 import { CASOS_ARBOL, FENTANILO } from '../sim/casos/casos';
 import { crearPartida } from '../sim/interprete';
@@ -17,12 +13,11 @@ import { DemoNaloxona } from './componentes/DemoNaloxona';
 import { Simulacion } from './componentes/Simulacion';
 import { crearContexto, leccionesDe } from './contexto';
 import { IdiomaContexto, TRADUCTOR } from './idioma';
+import { MINIATURAS, precargarEscena } from './miniaturas';
 import { textoDecision } from './registro';
 
 type Pantalla = 'menu' | 'pregunta_tutorial' | 'tutorial' | 'controles' | 'escenarios' | 'modo' | 'sim' | 'repaso';
 
-// Miniaturas de los escenarios, renderizadas en Blender (blender/miniaturas_escenarios.py).
-const MINIATURAS: Record<string, string> = { fentanilo: miniFentanilo, pastillas: miniPastillas, xilazina: miniXilazina, tardio: miniTardio };
 const MODOS: Modo[] = ['guiado', 'sin_guia'];
 const PASOS_TUTORIAL = [1, 2, 3, 4, 5];
 const params = new URLSearchParams(location.search);
@@ -130,8 +125,8 @@ export function App() {
             <ul className="escenarios">
               {Object.values(CASOS_ARBOL).map((c) => (
                 <li key={c.id}>
-                  <button type="button" className="escenario" onClick={() => { setCasoId(c.id); setPantalla('modo'); }}>
-                    <img src={MINIATURAS[c.id]} alt="" width={960} height={600} />
+                  <button type="button" className="escenario" onClick={() => { setCasoId(c.id); precargarEscena(c.motor); setPantalla('modo'); }}>
+                    <img src={MINIATURAS[c.motor]} alt="" width={960} height={600} />
                     <span className="escenario-texto">
                       <b>{t(c.tituloKey)}</b>
                       <span>{t(`caso.${c.id}.corto`)}</span>

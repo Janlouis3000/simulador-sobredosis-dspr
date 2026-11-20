@@ -167,7 +167,13 @@ export const Scene3D = (() => {
   const escenaURL = (id) => (Object.entries(ESCENAS_GLB).find(([ruta]) => ruta.endsWith(`escenario_${id}.glb`)) || [])[1];
   // Filtro anisotrópico: las texturas se ven nítidas en ángulo rasante (el piso de losas o de madera visto desde
   // la cámara, las alfombras, la ropa). Se limita a 8 muestras, que casi cualquier equipo soporta sin costo visible.
-  const nitida = (t) => { if (t && R) { t.anisotropy = Math.min(8, R.capabilities.getMaxAnisotropy()); t.needsUpdate = true; } };
+  // Los modelos que se precargan al escoger el caso (prepare) llegan antes que el renderer: sus texturas esperan.
+  const sinNitidez = [];
+  const nitida = (t) => {
+    if (!t) return;
+    if (!R) { sinNitidez.push(t); return; }
+    t.anisotropy = Math.min(8, R.capabilities.getMaxAnisotropy()); t.needsUpdate = true;
+  };
   function prepararEscenario(model) {
     model.traverse((o) => {
       if (!o.isMesh) return;
@@ -770,6 +776,7 @@ vec2 pupila(vec2 uv, vec2 c) {
       const pmrem = new THREE.PMREMGenerator(R);
       envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
       pmrem.dispose();
+      sinNitidez.splice(0).forEach(nitida);
     }
     // El lienzo se muda si el contenedor cambió (el simulador por pasos lo crea de nuevo en cada partida).
     if (contenedor !== container) {
@@ -798,16 +805,25 @@ vec2 pupila(vec2 uv, vec2 c) {
     props.shadow = contactShadow(); scene.add(props.shadow);
     state.pose = 'supine';
     person = null; targets = null;
-    setPerson(buildPerson(SET[id]));
-    // El personaje GLB reemplaza al maniquí apenas carga (con el archivo embebido tarda una fracción de segundo).
     const url = elegida && elegida.caseId === id ? elegida.url : elegir(id);
     elegida = null; // la próxima corrida escoge otra variante
     const sceneNow = scene;
-    cargar(url).then((m) => { if (scene === sceneNow) setPerson(buildPersonGLB(m)); },
-      (e) => console.warn('No se pudo cargar el personaje GLB; se usa el maniquí.', e));
+    // Si el personaje ya se precargó (prepare), entra de una vez. Si no, el maniquí ocupa su lugar mientras carga
+    // (la interfaz lo tapa con "Preparando la escena…") y se queda solo si el GLB no carga.
+    const yaListo = listos[url];
+    setPerson(yaListo ? buildPersonGLB(yaListo) : buildPerson(SET[id]));
+    const persona = yaListo ? Promise.resolve() : cargar(url).then((m) => { if (scene === sceneNow) setPerson(buildPersonGLB(m)); });
+    persona.catch((e) => console.warn('No se pudo cargar el personaje GLB; se usa el maniquí.', e));
     setView('wide', true);
     resize(container);
     ready = true;
+    // Se cumple cuando el personaje y el escenario horneado están en la escena ('glb'), o cuando alguno no cargó y
+    // queda el respaldo ('respaldo'). ponerEscenario ya se suscribió antes a la carga del escenario, así que al
+    // cumplirse esta promesa el escenario horneado ya reemplazó al procedural.
+    const urlEscena = escenaURL(id);
+    const escenario = urlEscena ? cargar(urlEscena, prepararEscenario) : Promise.resolve();
+    return Promise.allSettled([persona, escenario])
+      .then((r) => (r.every((x) => x.status === 'fulfilled') ? 'glb' : 'respaldo'));
   }
 
   function applyPoseInstant(p = person, T = targets) {

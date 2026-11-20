@@ -9,11 +9,13 @@ import type { CaseId } from '../../engine';
 import type { Ancla, Icono as TipoIcono } from '../../sim/tipos';
 import type { EstadoEscena } from '../estadoEscena';
 import { useT } from '../idioma';
+import { MINIATURAS } from '../miniaturas';
 import { Icono } from './Iconos';
 
 interface Punto { x: number; y: number; visible: boolean }
 interface Escena {
-  init(contenedor: HTMLElement, caso: string): void;
+  /** Se cumple cuando el personaje y el escenario están en la escena, o cuando alguno no cargó y queda el respaldo. */
+  init(contenedor: HTMLElement, caso: string): Promise<'glb' | 'respaldo'>;
   update(estado: Partial<EstadoEscena>): void;
   setView(vista: 'wide' | 'face', alInstante?: boolean): void;
   checkPupils(): void;
@@ -39,6 +41,13 @@ interface Props {
 
 /** Separación mínima entre dos iconos, en píxeles (44 px del icono + margen). */
 const SEPARA = 52;
+/**
+ * Si los modelos no terminan de cargar en este tiempo, se quita "Preparando la escena…" y se ve lo que haya
+ * (el maniquí y el cuarto de respaldo). Con una conexión muy lenta es mejor eso que esperar sin fin.
+ */
+const ESPERA_MAXIMA_MS = 12_000;
+/** Lo que dura el fundido de salida de "Preparando la escena…" (igual que la transición en arbol.css). */
+const FUNDIDO_MS = 400;
 const movimientoReducido =() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
 export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, haciendo }: Props) {
@@ -50,6 +59,8 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
   const estadoRef = useRef(estado);
   const [lista, setLista] = useState(false);
   const [fallo, setFallo] = useState(false);
+  // Mientras bajan los modelos se tapa la escena (en vez de mostrar el maniquí de cápsulas un momento).
+  const [carga, setCarga] = useState<'cargando' | 'saliendo' | 'lista'>('cargando');
   // Cámara escogida con los botones; revisar las pupilas después de eso acerca la cámara a la cara.
   const [camara, setCamara] = useState<{ v: 'wide' | 'face'; pupilas: number }>({ v: 'wide', pupilas: 0 });
   const vista = pupilas > camara.pupilas ? 'face' : camara.v;
@@ -58,20 +69,30 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
   // Carga diferida de la escena (three.js + modelos del caso).
   useEffect(() => {
     let vivo = true;
+    let fundido = 0;
+    const destapar = () => {
+      if (!vivo) return;
+      clearTimeout(espera);
+      setCarga((c) => (c === 'cargando' ? 'saliendo' : c));
+      fundido = window.setTimeout(() => { if (vivo) setCarga('lista'); }, movimientoReducido() ? 0 : FUNDIDO_MS);
+    };
+    const espera = window.setTimeout(destapar, ESPERA_MAXIMA_MS);
     import('../../scene.js').then((m) => {
       if (!vivo || !lienzo.current) return;
       try {
         const escena = m.Scene3D as unknown as Escena;
-        escena.init(lienzo.current, motor);
+        const modelos = escena.init(lienzo.current, motor);
         lienzo.current.querySelector('canvas')?.setAttribute('aria-hidden', 'true');
         escena.update(estadoRef.current);
         api.current = escena;
         setLista(true);
+        // Un cuadro más, para que el personaje ya esté dibujado en su pose cuando se quite la cortina.
+        void modelos.finally(() => requestAnimationFrame(destapar));
       } catch {
         setFallo(true); // sin WebGL: el simulador sigue con la lista de opciones
       }
     }).catch(() => setFallo(true));
-    return () => { vivo = false; api.current = null; };
+    return () => { vivo = false; api.current = null; clearTimeout(espera); clearTimeout(fundido); };
   }, [motor]);
 
   // Estado del cuerpo. Una dosis nueva se ve: la mano lleva el dispositivo a la nariz.
@@ -123,6 +144,12 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
   return (
     <div className={haciendo ? 'escena3d haciendo' : 'escena3d'}>
       <div className="lienzo" ref={lienzo} />
+      {carga !== 'lista' && (
+        <div className={carga === 'saliendo' ? 'cargando-escena saliendo' : 'cargando-escena'}>
+          {MINIATURAS[motor] && <img src={MINIATURAS[motor]} alt="" />}
+          <p role="status"><span className="girador" aria-hidden="true" />{t('escena.cargando')}</p>
+        </div>
+      )}
       <p className="solo-lector">{descripcion}</p>
       <span className="chip lugar">{lugar}</span>
       {haciendo && <span className="chip haciendo">{haciendo}</span>}
@@ -130,7 +157,7 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
         <button type="button" aria-pressed={vista === 'wide'} onClick={() => ver('wide')}>{t('escena.vista_general')}</button>
         <button type="button" aria-pressed={vista === 'face'} onClick={() => ver('face')}>{t('escena.cara')}</button>
       </div>
-      {lista && marcas.map((m) => (
+      {lista && carga === 'lista' && marcas.map((m) => (
         <button
           key={m.id} type="button" className="marca" aria-hidden="true" tabIndex={-1} data-etiqueta={m.etiqueta}
           ref={(el) => { if (el) botones.current.set(m.id, el); else botones.current.delete(m.id); }}

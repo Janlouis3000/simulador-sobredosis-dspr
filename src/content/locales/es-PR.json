@@ -63,6 +63,7 @@
 
   "escena.vista_general": "Vista general",
   "escena.cara": "Cara",
+  "escena.cargando": "Preparando la escena…",
   "escena.kit": "Kit de naloxona",
   "escena.alt": "Escena 3D: {lugar}. {posicion}",
   "escena.pos.supine": "La persona está boca arriba en el piso.",
