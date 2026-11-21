@@ -28,7 +28,9 @@ El `index.html` de la raíz es el código fuente y solo funciona con `npm run de
   - Solo algunas: agrega `--solo h2` o `--solo a1,v2`.
 - `blender/generar_escenarios.py`: arma los cuatro escenarios y hornea su luz en Blender. Usa muebles y enseres de la Asset Store (House Interior y Appliances) desde el proyecto de Unity en `%USERPROFILE%\UnityProjects\SimuladorDSPR-assets`; otra carpeta se indica con `--unity`.
   - Comando: `blender --background --python blender/generar_escenarios.py -- --out modelos`
-  - Uno solo y rápido: `--solo fentanilo --muestras 32 --tam 1024`.
+  - Uno solo y rápido: `--solo fentanilo --muestras 32 --tam 1024 --tam-piso 1024`.
+  - Calidad: `--tam` (paredes y muebles, 2048), `--tam-piso` (3072), `--tam-cerca` (alfombras, 1024) y `--calidad` (WebP, 85). Las razones de cada valor están en `CLAUDE.md`.
+- Las personas aceptan `--calidad` (WebP, 80), `--tex-piel` (2048) y `--tex-ropa` (1024).
 - `modelos/escenario_*.glb`: los escenarios con luz horneada.
 - `modelos/persona_*.glb`: las personas que usa el simulador. Se escoge una al azar según el caso. Para fijarla, agrega `?persona=h2` a la dirección (`h` adultos, `a` adolescentes, `v` adultos mayores).
 - Al despertar con Narcan, la persona reacciona: se enoja porque le quitaron la nota, se asusta, siente asco, se avergüenza o da las gracias. Hay una conversación corta para calmarla, distinta en cada caso y con variantes al azar, y en 3D hace gestos según su emoción. Para fijar la reacción, agrega `?emocion=asco` (o `enojo`, `miedo`, `confusion`, `gratitud`, `verguenza`) a la dirección.

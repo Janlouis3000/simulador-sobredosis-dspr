@@ -29,7 +29,18 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="modelos")
 ap.add_argument("--solo", default="")
 ap.add_argument("--muestras", type=int, default=64)
-ap.add_argument("--tam", type=int, default=2048)
+# Tamaños de los atlas horneados. Se compararon en capturas iguales (misma cámara, persona y luz):
+# - Todo en 4096 deja nítidas las juntas del piso y las franjas de la alfombra, pero duplica el GLB (+535 KB en el
+#   baño) y cuadruplica la memoria de la tarjeta gráfica; paredes y muebles casi no cambian porque no se ven de cerca.
+# - Piso en 3072 y alfombras en su propio atlas de 1024 se ven casi igual que 4096 junto a la persona por +84 KB.
+# - Más muestras no cambian la nitidez: el ruido de 64 muestras solo queda en zonas tapadas que no se ven.
+ap.add_argument("--tam", type=int, default=2048, help="lado en px del atlas horneado de paredes y muebles")
+ap.add_argument("--tam-piso", type=int, default=3072, help="lado en px del atlas del piso (0 = el de --tam)")
+ap.add_argument("--tam-cerca", type=int, default=1024,
+                help="lado en px del atlas propio de los objetos junto a la persona (CERCA: las alfombras); 0 = van en el de --tam")
+ap.add_argument("--calidad", default="85",
+                help="calidad WebP de las texturas al exportar (0-100). Varias separadas por coma (p. ej. 85,90,95) "
+                     "exportan un GLB por calidad desde el mismo horneado, con el sufijo _q<calidad>, para compararlas")
 ap.add_argument("--texturas", default="", help="carpeta donde guardar las texturas horneadas en PNG para revisarlas")
 ap.add_argument("--unity", default=os.path.join(os.path.expanduser("~"), "UnityProjects", "SimuladorDSPR-assets", "Assets"),
                 help="carpeta Assets del proyecto de Unity con House Interior (nappin) y Appliances (Alstra Infinite)")
@@ -583,6 +594,13 @@ def tardio():
 
 
 # ---------- Luz y horneado ----------
+# Objetos (por el comienzo de su nombre) que se hornean en su propio atlas (--tam-cerca) porque se ven de cerca.
+CERCA = ("Alfombra",)
+# Escenarios cuyo piso no tiene juntas ni tablas: en 3072 no se ve ninguna diferencia (el concreto del callejón
+# pesaba 134 KB más), así que su piso se hornea con --tam.
+PISO_SIN_JUNTAS = {"xilazina"}
+
+
 def luces():
     # Sol en la dirección de la luz principal de scene.js: desde (1.6, 3.4, 1.4) hacia el origen.
     sol = bpy.data.lights.new("Sol", 'SUN'); sol.energy = 3.3; sol.color = (1.0, 0.95, 0.88); sol.angle = math.radians(6)
@@ -709,18 +727,28 @@ def construir(nombre):
     globals()[nombre]()
     estaticos = [o for o in COL.objects if o.type == 'MESH' and not o.get("dinamico")]
     piso = [o for o in estaticos if o.name == "Piso"]
-    resto = [o for o in estaticos if o.name != "Piso"]
-    hornear(piso, nombre + "_piso", args.tam, args.muestras)
+    # Las alfombras quedan junto a la cabeza o debajo de la persona: en la vista de la cara se ven de muy cerca.
+    # En el atlas de paredes y muebles les tocaban unos 270 texeles por metro y sus franjas se veían en bloques;
+    # en un atlas propio de 1024 px tienen de 700 a 1400 texeles por metro por poco peso.
+    cerca = [o for o in estaticos if o.name.startswith(CERCA)] if args.tam_cerca else []
+    resto = [o for o in estaticos if o.name != "Piso" and o not in cerca]
+    tam_piso = args.tam if nombre in PISO_SIN_JUNTAS else (args.tam_piso or args.tam)
+    hornear(piso, nombre + "_piso", tam_piso, args.muestras)
+    if cerca:
+        hornear(cerca, nombre + "_cerca", args.tam_cerca, args.muestras)
     hornear(resto, nombre + "_resto", args.tam, args.muestras)
     # Biseles de los dinámicos aplicados también
     for o in COL.objects:
         if o.type == 'MESH':
             o.select_set(True)
-    ruta = os.path.abspath(os.path.join(args.out, f"escenario_{nombre}.glb"))
-    bpy.ops.export_scene.gltf(filepath=ruta, export_format='GLB', use_selection=False, export_apply=True,
-                              export_lights=False, export_cameras=False, export_animations=False,
-                              export_image_format='WEBP', export_image_quality=85)
-    print("GLB exportado:", ruta, round(os.path.getsize(ruta) / 1024), "KB")
+    calidades = [int(c) for c in args.calidad.split(",")]
+    for cal in calidades:
+        sufijo = f"_q{cal}" if len(calidades) > 1 else ""
+        ruta = os.path.abspath(os.path.join(args.out, f"escenario_{nombre}{sufijo}.glb"))
+        bpy.ops.export_scene.gltf(filepath=ruta, export_format='GLB', use_selection=False, export_apply=True,
+                                  export_lights=False, export_cameras=False, export_animations=False,
+                                  export_image_format='WEBP', export_image_quality=cal)
+        print("GLB exportado:", ruta, round(os.path.getsize(ruta) / 1024), "KB")
 
 
 os.makedirs(args.out, exist_ok=True)

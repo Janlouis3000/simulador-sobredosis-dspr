@@ -4,9 +4,9 @@ Hay tres formas de distribuirlo. Las tres salen del mismo código.
 
 | Build | Comando | Resultado | Para qué |
 |---|---|---|---|
-| Sitio web | `npm run build:web` | `dist-web/` (unos 8 MB en 20 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
-| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 10.4 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
-| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 9.9 MB) | Compartir por correo o abrir con doble clic |
+| Sitio web | `npm run build:web` | `dist-web/` (unos 9.3 MB en 27 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
+| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 12 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
+| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 11.4 MB) | Compartir por correo o abrir con doble clic |
 
 ## Sitio web (`dist-web/`)
 
@@ -16,7 +16,7 @@ Hay tres formas de distribuirlo. Las tres salen del mismo código.
 - **Tamaños.** Cada página baja solo lo suyo:
   - `arbol.html`: unos 122 KB comprimidos (React, el árbol y los textos) y las cuatro miniaturas de los escenarios (unos 25 KB cada una). La escena 3D (three.js, unos 184 KB comprimidos) y los modelos del caso se bajan al comenzar un escenario. Sin WebGL sigue funcionando con la lista de opciones.
   - `index.html`: unos 195 KB comprimidos de código (three.js).
-  - Modelos 3D: unos 0.5 a 1 MB cada uno. El clásico baja solo los del caso escogido, cuando se escoge.
+  - Modelos 3D: de 0.5 a 1.2 MB cada uno. Un caso baja una persona (0.58 a 0.74 MB) y su escenario (0.49 a 1.2 MB). El clásico baja solo los del caso escogido, cuando se escoge.
 - **Rutas relativas:** funciona en cualquier carpeta del servidor, por ejemplo `https://www.salud.pr.gov/simulador/arbol.html`.
 - **Requisitos del servidor:** es un sitio estático (HTML, JS, CSS, GLB) y no necesita base de datos ni servidor de aplicaciones. Sirve cualquier servidor web, Azure Static Web Apps, GitHub Pages o un bucket de S3.
 - **Tipo de los modelos:** el servidor debe enviar los `.glb` como `model/gltf-binary`. Si no lo hace, la mayoría de los navegadores igual los aceptan.

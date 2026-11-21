@@ -33,6 +33,11 @@ argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 ap = argparse.ArgumentParser()
 ap.add_argument("--out", default="modelos")
 ap.add_argument("--solo", default="", help="id de una sola variante")
+ap.add_argument("--calidad", default="80",
+                help="calidad WebP de las texturas al exportar (0-100). Varias separadas por coma exportan un GLB por "
+                     "calidad, con el sufijo _q<calidad>, para compararlas")
+ap.add_argument("--tex-piel", type=int, default=0, help="lado de la textura de piel en px (0 = el de TEX)")
+ap.add_argument("--tex-ropa", type=int, default=0, help="lado máximo de la textura de la ropa en px (0 = el de TEX)")
 args = ap.parse_args(argv)
 
 # Diversidad de Puerto Rico: mezclas de ancestría africana, europea y taína/asiática y tonos de piel de claro a oscuro.
@@ -84,9 +89,17 @@ for lado, s in (("l", "L"), ("r", "R")):
                    f"calf_{lado}": "knee" + s, f"foot_{lado}": "ankle" + s})
 
 # Tamaño máximo de textura por tipo de malla (px). La piel lleva más detalle porque la cámara de cara se acerca.
+# Piel en 2048 (el tamaño original de MakeHuman): la ropa tapa casi todo el cuerpo y solo se usa el 28 % de la
+# textura (cara, cuello y manos), así que en 1024 la cara se veía lisa, sin poros. En capturas iguales, 2048 con
+# WebP 80 se ve tan nítida como 1024 con WebP 90 y pesa la mitad de más (+64 KB por persona). La ropa en 2048 no se
+# distingue en la vista general (+170 KB), así que queda en 1024.
 # Los ojos usan la textura café por defecto de MPFB (brown_eye.png): scene.js agranda o achica su pupila con un
 # shader que depende de la posición de los ojos en esa textura, así que no se cambia por otra.
-TEX = {"Piel": 1024, "Ropa": 1024, "Pelo": 512, "Zapatos": 512, "Ojos": 512, "Cejas": 256, "Pestanas": 256}
+TEX = {"Piel": 2048, "Ropa": 1024, "Pelo": 512, "Zapatos": 512, "Ojos": 512, "Cejas": 256, "Pestanas": 256}
+if args.tex_piel:
+    TEX["Piel"] = args.tex_piel
+if args.tex_ropa:
+    TEX["Ropa"] = args.tex_ropa
 DATA = LocationService.get_user_data()
 
 
@@ -244,7 +257,7 @@ def crear(v):
     return rig
 
 
-def exportar(rig, ruta):
+def exportar(rig, ruta, calidad):
     bpy.ops.object.select_all(action='DESELECT')
     rig.select_set(True)
     for o in rig.children:
@@ -253,15 +266,18 @@ def exportar(rig, ruta):
         filepath=ruta, export_format='GLB', use_selection=True, export_apply=False,
         export_skins=True, export_morph=True, export_morph_normal=False, export_try_sparse_sk=True,
         export_animations=False, export_yup=True, export_tangents=False,
-        export_vertex_color='ACTIVE', export_image_format='WEBP', export_image_quality=80)
+        export_vertex_color='ACTIVE', export_image_format='WEBP', export_image_quality=calidad)
 
 
 os.makedirs(args.out, exist_ok=True)
+calidades = [int(c) for c in args.calidad.split(",")]
 for v in VARIANTES:
     if args.solo and v["id"] not in args.solo.split(","):
         continue
     bpy.ops.wm.read_homefile(use_empty=True)
     rig = crear(v)
-    ruta = os.path.abspath(os.path.join(args.out, f"persona_{v['id']}.glb"))
-    exportar(rig, ruta)
-    print("GLB exportado:", ruta, round(os.path.getsize(ruta) / 1024), "KB")
+    for cal in calidades:
+        sufijo = f"_q{cal}" if len(calidades) > 1 else ""
+        ruta = os.path.abspath(os.path.join(args.out, f"persona_{v['id']}{sufijo}.glb"))
+        exportar(rig, ruta, cal)
+        print("GLB exportado:", ruta, round(os.path.getsize(ruta) / 1024), "KB")

@@ -3,7 +3,7 @@
 Simulador educativo en español para adiestramiento comunitario. Lo desarrolla la División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas del Departamento de Salud de Puerto Rico (DSPR). La persona usuaria encuentra a alguien con una sobredosis, toma decisiones libres (9-1-1, vía aérea, naloxona, respiraciones, RCP, posición de rescate) y ve cómo cambian los signos, el oxígeno y el desenlace.
 
 ## Estado actual (v3: fases 1, 2 y 3 completadas)
-- Proyecto Vite con ES modules y Three.js r187 instalado por npm (sin CDN). `npm run build` genera `dist/index.html`: un solo archivo con JS, CSS, logos, los siete personajes que usan los casos y los cuatro escenarios GLB embebidos (vite-plugin-singlefile) para compartir sin servidor. Pesa unos 9.9 MB: la geometría de personajes y escenarios va comprimida con meshopt (`npm run comprimir`), y las texturas son WebP.
+- Proyecto Vite con ES modules y Three.js r187 instalado por npm (sin CDN). `npm run build` genera `dist/index.html`: un solo archivo con JS, CSS, logos, los siete personajes que usan los casos y los cuatro escenarios GLB embebidos (vite-plugin-singlefile) para compartir sin servidor. Pesa unos 11.4 MB: la geometría de personajes y escenarios va comprimida con meshopt (`npm run comprimir`), y las texturas son WebP.
 - `index.html`: marcado de las tres pantallas (inicio, simulación, resultado).
 - `src/`:
   - `engine.js`: motor fisiológico puro, sin DOM. Es la fuente de verdad clínica del modelo. No cambió en la migración.
@@ -48,7 +48,7 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - `?emocion=asco` en la dirección fija la reacción (capturas, talleres), como `?persona=`.
     - Fuente del despertar con síntomas: hoja de datos y guía de inicio rápido de NARCAN en español (Emergent, 2025-2026). Las respuestas siguen prácticas generales de cuidado después de la naloxona y están pendientes de revisión.
   - `charts.js`: gráficas SVG. `util.js`: `$`, `fmt`, `esc`. `main.js`: punto de entrada. `styles.css`: estilos.
-- **Simulador con árbol de decisiones (los cuatro casos).** Página aparte: `arbol.html` (`npm run dev` → /arbol.html; `npm run build:arbol` → `dist-arbol/arbol.html`, un solo archivo de unos 10.4 MB porque lleva la escena 3D y los modelos). El simulador clásico (`index.html`) no cambió.
+- **Simulador con árbol de decisiones (los cuatro casos).** Página aparte: `arbol.html` (`npm run dev` → /arbol.html; `npm run build:arbol` → `dist-arbol/arbol.html`, un solo archivo de unos 12 MB porque lleva la escena 3D y los modelos). El simulador clásico (`index.html`) no cambió.
   - **Flujo y escena (`src/arbol/App.tsx`):** menú (Jugar, Tutorial, Controles, Cómo usar la naloxona) → pregunta del tutorial (solo la primera vez) → tarjetas de los cuatro escenarios con miniatura → modo y perfil → simulación → informe.
     - El inicio tiene el formato del simulador clásico: título y botones a la izquierda, la tríada a la derecha (`Triada`) y debajo el bloque azul del Programa de Navegadores con los contactos (`Navegadores`, los dos en `componentes/Informe.tsx`). Usan las clases `hero`, `triad` y `division` de `styles.css` y los mismos textos del clásico (claves `triada.*` y `napro.*`).
     - Controles (`componentes/Controles.tsx`): una tarjeta ilustrada por forma de usarlo (ratón, pantalla táctil, teclado), con sus gestos. Los dibujos son decorativos; el texto dice lo mismo.
@@ -73,6 +73,9 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - Segunda dosis: aparece en `decidir` y en `vigilar` cuando pasaron 3 minutos y la persona sigue sin responder (en los casos 1 y 2 basta esperar o vigilar para verla; con ella la adolescente del caso 2 despierta). No se cambió ninguna regla clínica para esto.
     - Higgsfield (generación de imagen a 3D) no se usa: el plan gratuito da 10 créditos (un modelo 3D cuesta 5 y el modo ilimitado no está disponible para la cuenta) y sus mallas no traen el rig, el parpadeo ni las máscaras de cianosis de las personas MPFB.
     - Nitidez: `nitida()` en `scene.js` pone filtro anisotrópico (hasta 8 muestras) a las texturas de los escenarios horneados y de las personas, para que el piso y las alfombras no se vean borrosos en ángulo rasante.
+    - El límite de pixel ratio (2) y las sombras (2048 px) se quedaron como estaban.
+      - Con pixel ratio 2 los bordes ya salen nítidos y la sombra bajo el cuerpo no se ve escalonada. Lo que se veía pixelado era la resolución y la compresión de las texturas.
+      - Subirlo a 3 dibujaría 2.25 veces más píxeles en los teléfonos que lo tienen, sin arreglar las texturas.
   - TypeScript estricto (`tsconfig.json`), React 19 y Zod. `npm run typecheck`, `npm run lint` (ESLint) y `npm test` deben pasar.
   - `src/sim/`: lógica pura, sin DOM.
     - `tipos.ts`: tipos (DecisionNode, DecisionOption, CaseDefinition, ClinicalConfig, Partida, SimulationResult…).
@@ -114,7 +117,13 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
   - Hay que correrlo después de regenerar personas o escenarios en Blender. Personas: de 6.9 a 2.9 MB; escenarios: de 2.8 a 2.2 MB.
   - `scene.js` los descomprime con `MeshoptDecoder` de three, sin hilos, para no usar `Worker` ni URL `blob:`.
 - `prototipo/simulador-sobredosis-dspr.html` es la v2 original, que queda como referencia. No tenía `<!doctype>` ni `<meta viewport>`: abría en modo de compatibilidad y en el teléfono se veía como de escritorio. La v3 ya tiene las dos cosas.
-- `blender/generar_personajes_mpfb.py` genera los nueve personajes con MPFB 2 (MakeHuman para Blender) y los exporta a `modelos/persona_<id>.glb` (unos 1.3 MB cada uno, texturas WebP; 0.5 MB después de `npm run comprimir`). `--solo a1,v2` genera solo esos.
+- `blender/generar_personajes_mpfb.py` genera los nueve personajes con MPFB 2 (MakeHuman para Blender) y los exporta a `modelos/persona_<id>.glb` (de 1.3 a 1.7 MB cada uno, texturas WebP; de 0.58 a 0.74 MB después de `npm run comprimir`). `--solo a1,v2` genera solo esos.
+  - Texturas (`TEX`): piel en 2048, el tamaño original de MakeHuman; ropa en 1024; pelo, zapatos y ojos en 512.
+    - La ropa tapa casi todo el cuerpo y de la piel solo se usa el 28 % (cara, cuello y manos). En 1024, con WebP 80, la cara se veía lisa, sin poros.
+    - En capturas iguales, piel en 2048 con WebP 80 se ve tan nítida como 1024 con WebP 90. Cuesta de +55 a +75 KB por persona (+98 y +144 KB los adultos mayores, cuya piel tiene arrugas). La ropa en 2048 no se distingue (+170 KB).
+    - Geometría, UV, huesos, claves de forma y máscaras de cianosis no cambian con esto.
+  - Parámetros: `--calidad` (80) es la calidad WebP. Varias separadas por coma exportan un GLB por calidad, con sufijo `_q<calidad>`. `--tex-piel` y `--tex-ropa` cambian el lado de esas texturas para comparar.
+  - Hoy solo se regeneran las siete que usan los casos. `persona_m1` y `persona_m2` quedaron con la piel de 1024 y no entran al build.
   - Edad en MPFB: 0.1875 = 11 años, 0.5 = 25 y 1.0 = 90. Adolescentes en 0.30 (≈16 años) y adultos mayores en 0.86 (≈72 años), con pieles "old" de MakeHuman y `canas` (pelo y cejas hacia gris).
   - Pelo de las adolescentes sin flequillo sobre los ojos: `bob01`/`bob02` los tapan y no se verían las pupilas.
   - Necesita la extensión MPFB y los paquetes CC0 "MakeHuman system assets" y "Faceunits 01" cargados en MPFB. Todo lo que produce es CC0.
@@ -132,7 +141,18 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - Cuarto: un frasco y pastillas en la mesa de noche.
     - Callejón: una botella tirada junto al contenedor.
     - Sin jeringuilla en el callejón: el texto no la menciona y no se quiere sumar estigma a la escena de la calle.
-  - `--texturas carpeta` guarda las texturas horneadas en PNG para revisarlas. `--muestras` y `--tam` controlan la calidad.
+  - `--texturas carpeta` guarda las texturas horneadas en PNG para revisarlas. `--muestras` controla el ruido del horneado.
+  - Atlas horneados por escenario:
+    - `--tam` (2048): paredes y muebles.
+    - `--tam-piso` (3072): el piso. Los escenarios de `PISO_SIN_JUNTAS` (el callejón) usan `--tam`: su concreto liso no cambia a la vista y pesaba 134 KB más.
+    - `--tam-cerca` (1024): un atlas propio para los objetos de `CERCA` (las alfombras), que quedan junto a la cabeza o debajo de la persona. El callejón no tiene.
+  - `--calidad` (85) es la calidad WebP de exportación. Con varias separadas por coma (`85,90,95`) exporta un GLB por calidad desde el mismo horneado (sufijo `_q<calidad>`), para comparar.
+  - Por qué esos valores (capturas iguales del baño, noviembre de 2026):
+    - Con todo en 2048, las franjas de la alfombra se veían en bloques: le tocaban unos 270 texeles por metro. Las juntas del piso salían escalonadas en la vista de la cara.
+    - Todo en 4096 lo arregla, pero el baño pasaba de 555 a 1090 KB y la memoria de texturas se cuadruplicaba.
+    - Piso en 3072 y alfombra en 1024 (unos 850 texeles por metro) se ven casi igual que 4096 junto a la persona: 639 KB y unos 78 MB de memoria de texturas, frente a 44 MB antes.
+    - WebP 90 o 95 no cambia nada visible en los escenarios (+150 y +460 KB).
+    - 64 muestras bastan: el ruido solo queda en zonas tapadas por muebles, que no se ven.
 - `blender/generar_personaje.py` y `modelos/persona.glb` son el personaje simple de la fase 2. El simulador ya no lo usa; queda como referencia.
 - Unity: el proyecto `%USERPROFILE%\UnityProjects\SimuladorDSPR-assets` (Unity 6000.6.8f1, fuera de OneDrive) solo guarda los assets de la Asset Store de la persona a cargo, para que Blender los lea. El simulador sigue siendo web.
   - `generar_escenarios.py` lee de su carpeta `Assets` (`--unity`) los FBX y materiales de "House Interior - Free" (nappin) y "Appliances - SnapNSet Starter" (Alstra Infinite) con `mueble()`. Los escala a medidas reales (los de House Interior vienen a casi el doble, cada uno distinto), simplifica los muy densos y los hornea con el cuarto: la textura de color se lee de su UV original y la luz va a una UV nueva.
