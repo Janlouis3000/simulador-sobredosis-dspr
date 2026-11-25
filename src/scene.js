@@ -21,6 +21,7 @@ export const Scene3D = (() => {
   const state = { pose: 'supine', anim: 'none', rr: 0, arrest: false, cyan: 0, cons: 0, vomit: false, phone: false, dosesUsed: 0, t: 0, pupil: 3.8, agit: 0, emocion: null };
   const D = Math.PI / 180;
   let envMap = null; // luz de entorno (RoomEnvironment), se crea una vez por renderer
+  const luces = {}; // hemi, key, fill, rim: se crean con el renderer y se reusan en cada caso
 
   const SKIN = new THREE.Color('#9a6647'), SKIN_CY = new THREE.Color('#8b8798');
   const LIPS = new THREE.Color('#9b4d47'), LIPS_CY = new THREE.Color('#4a5689');
@@ -249,6 +250,7 @@ export const Scene3D = (() => {
   // Tinte multiplicado sobre la textura de piel cuando falta oxígeno (gris azulado).
   const TINT = new THREE.Color(1, 1, 1), TINT_CY = new THREE.Color(0.74, 0.8, 1.05);
 
+  const sueloPorModelo = new WeakMap(); // modelo GLB -> altura de la raíz en cada pose (groundPoses)
   function buildPersonGLB(template) {
     const root = new THREE.Group(), model = cloneSkinned(template);
     root.add(model); root.updateMatrixWorld(true);
@@ -262,7 +264,12 @@ export const Scene3D = (() => {
       // suaves, con transparencia (son mallas pequeñas pegadas a la piel y no tienen problemas de orden).
       m.transparent = false; m.depthWrite = true;
       if (name === 'Pelo') { m.alphaTest = 0.35; m.side = THREE.DoubleSide; }
-      if (name === 'Cejas' || name === 'Pestanas') { m.transparent = true; m.depthWrite = false; o.renderOrder = 1; }
+      // forceSinglePass: transparentes y de dos caras, three las dibujaba en dos pasadas cambiando `side` y marcando
+      // needsUpdate, lo que recalculaba su programa de shader en cada cuadro (unos 20 KB de basura por cuadro cada una).
+      if (name === 'Cejas' || name === 'Pestanas') { m.transparent = true; m.depthWrite = false; m.forceSinglePass = true; o.renderOrder = 1; }
+      // Cejas, pestañas y ojos no proyectan sombra: es menor que un texel del mapa de sombras (unos 2 mm) y, como
+      // llevan claves de forma y la ropa no, alternaban el material de profundidad compartido en cada cuadro.
+      if (name === 'Cejas' || name === 'Pestanas' || name === 'Ojos') o.castShadow = false;
       if (name === 'Piel') M.skin = m;
       if (name === 'Ojos') M.eyes = m;
       if (o.morphTargetDictionary && 'eyeBlinkLeft' in o.morphTargetDictionary) blink.push(o);
@@ -310,7 +317,10 @@ export const Scene3D = (() => {
     const p = { glb: true, root, J, M, hands: rescuerHands(root), toLocal, blink, lips, pupil, faceUp, headFwd, headUp,
       eyeOpen: EYE_REST, eyeRight: EYE_REST, pupilCheck: -1,
       chestAxes, counter, tint: TINT, tintCy: TINT_CY };
-    p.ground = groundPoses(p);
+    // La altura de cada pose depende solo del modelo y de POSES: se calcula una vez por modelo (recorre todos los
+    // vértices con el esqueleto en cuatro poses) y no en cada caso.
+    if (!sueloPorModelo.has(template)) sueloPorModelo.set(template, groundPoses(p));
+    p.ground = sueloPorModelo.get(template);
     return p;
   }
 
@@ -771,7 +781,16 @@ vec2 pupila(vec2 uv, vec2 c) {
       controls.maxPolarAngle = 1.48; controls.enablePan = false;
       controls.addEventListener('start', () => { camGoal = null; });
       clock = new THREE.Timer(); clock.connect(document);
-      R.setAnimationLoop(loop);
+      // Luces: se crean una vez y pasan de una escena a la siguiente (add las quita de la anterior). Si cada caso
+      // creara las suyas, cada luz principal traería su propio mapa de sombras de 2048 px (unos 32 MB en la GPU) y
+      // los de los casos anteriores no se liberarían nunca.
+      luces.hemi = new THREE.HemisphereLight();
+      luces.key = new THREE.DirectionalLight(); luces.key.position.set(1.6, 3.4, 1.4); luces.key.castShadow = true;
+      luces.key.shadow.mapSize.set(2048, 2048);
+      Object.assign(luces.key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2 });
+      luces.key.shadow.bias = -0.0004; luces.key.shadow.normalBias = 0.02; luces.key.shadow.radius = 5;
+      luces.fill = new THREE.DirectionalLight(0x8acff3, 0.3 * LI); luces.fill.position.set(-2.5, 1.8, 2);
+      luces.rim = new THREE.DirectionalLight(0xffffff, 0.3 * LI); luces.rim.position.set(0, 2, -3);
       // Luz de entorno: un cuarto genérico que da reflejos y luz rebotada a pisos, losas, piel y líquidos.
       const pmrem = new THREE.PMREMGenerator(R);
       envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -786,16 +805,14 @@ vec2 pupila(vec2 uv, vec2 c) {
       observador.observe(container);
       contenedor = container;
     }
+    R.setAnimationLoop(loop); // vuelve a dibujar (pausar() lo detiene al salir del caso)
     nalox = null;
     scene = new THREE.Scene();
     const E = ESCENARIOS[id];
     scene.environment = envMap; scene.environmentIntensity = E.env;
-    const hemi = new THREE.HemisphereLight(E.hemi[0], E.hemi[1], E.hemi[2] * LI); scene.add(hemi);
-    const key = new THREE.DirectionalLight(E.key[0], E.key[1] * LI); key.position.set(1.6, 3.4, 1.4); key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048); key.shadow.camera.left = -2; key.shadow.camera.right = 2; key.shadow.camera.top = 2; key.shadow.camera.bottom = -2;
-    key.shadow.bias = -0.0004; key.shadow.normalBias = 0.02; key.shadow.radius = 5; scene.add(key);
-    const fill = new THREE.DirectionalLight(0x8acff3, 0.3 * LI); fill.position.set(-2.5, 1.8, 2); scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffffff, 0.3 * LI); rim.position.set(0, 2, -3); scene.add(rim);
+    luces.hemi.color.set(E.hemi[0]); luces.hemi.groundColor.set(E.hemi[1]); luces.hemi.intensity = E.hemi[2] * LI;
+    luces.key.color.set(E.key[0]); luces.key.intensity = E.key[1] * LI;
+    scene.add(luces.hemi, luces.key, luces.fill, luces.rim);
     scene.background = new THREE.Color(E.bg);
     setGroup = null; ponerEscenario(id);
     props.n1 = narcan(0.32, -0.55); props.n2 = narcan(0.4, -0.42); props.caja = cajaNaloxona(0.53, -0.56);
@@ -937,5 +954,9 @@ vec2 pupila(vec2 uv, vec2 c) {
   // "Le abres un párpado con el pulgar": abre el ojo derecho unos segundos para ver la pupila.
   function checkPupils() { if (ready && person) person.pupilCheck = state.t + 5; }
 
-  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, charco, get view() { return view; } };
+  // Al salir del caso el lienzo ya no está en la página: sin esto el renderer seguía dibujando (con sombras) en el
+  // menú y en el informe. init() lo vuelve a encender.
+  function pausar() { if (R) R.setAnimationLoop(null); }
+
+  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, charco, pausar, get view() { return view; } };
 })();

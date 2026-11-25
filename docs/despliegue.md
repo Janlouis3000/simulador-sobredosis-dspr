@@ -101,6 +101,7 @@ configurarAnalitica({ enviar: (evento, datos) => navigator.sendBeacon('/metricas
 - Escena 3D: los iconos sobre la persona escogen la opción, no se enciman y quedan fuera del orden de Tab.
 - Modo guiado (pista y explicación) y modo sin guía (la explicación llega en el resumen de la fase).
 - El caso completo solo con teclado, sin perder el foco.
+- El anillo de foco tiene 3:1 de contraste contra lo que lo rodea (axe no lo revisa).
 - Teléfono de 400 px, con botones de 44 px o más.
 - Dentro de un iframe, sin WebGL, y con un modelo 3D que no carga.
 - Movimiento reducido, idioma fijo en español de Puerto Rico (sin selector) y reinicio.

@@ -38,8 +38,14 @@ export function App() {
 
   // Siempre español de Puerto Rico (también está en arbol.html; esto lo asegura si la página se incrusta distinto).
   useEffect(() => { document.documentElement.lang = IDIOMA; }, []);
-  // Al cambiar de pantalla, el foco va a su título (teclado y lectores de pantalla).
-  useEffect(() => { if (pantalla !== 'sim' && pantalla !== 'repaso') titulo.current?.focus(); }, [pantalla]);
+  // Al cambiar de pantalla, el foco va a su título (teclado y lectores de pantalla). Al abrir la página no se mueve:
+  // el lector empieza arriba, con "Saltar al contenido", y dentro de un iframe con sandbox el navegador bloquea un foco
+  // sin acción de la persona (Edge 158: "focus-without-user-activation").
+  const primeraPantalla = useRef(true);
+  useEffect(() => {
+    if (primeraPantalla.current) { primeraPantalla.current = false; return; }
+    if (pantalla !== 'sim' && pantalla !== 'repaso') titulo.current?.focus();
+  }, [pantalla]);
 
   const comenzar = () => {
     registrar(partida ? 'scenario_repeated' : 'scenario_started', { caso: caso.id, perfil, modo });

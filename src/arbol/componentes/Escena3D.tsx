@@ -21,6 +21,8 @@ interface Escena {
   checkPupils(): void;
   anclas(): Record<string, Punto> | null;
   darNaloxona(fijo?: number): void;
+  /** Deja de dibujar (al salir del caso); init() vuelve a empezar. */
+  pausar(): void;
 }
 // `?nalox=0.62` en la dirección deja la animación de la naloxona quieta en ese punto (capturas y talleres).
 const naloxFija = Number(new URLSearchParams(location.search).get('nalox')) || undefined;
@@ -92,7 +94,7 @@ export function Escena3D({ motor, estado, marcas, lugar, descripcion, pupilas, h
         setFallo(true); // sin WebGL: el simulador sigue con la lista de opciones
       }
     }).catch(() => setFallo(true));
-    return () => { vivo = false; api.current = null; clearTimeout(espera); clearTimeout(fundido); };
+    return () => { vivo = false; api.current?.pausar(); api.current = null; clearTimeout(espera); clearTimeout(fundido); };
   }, [motor]);
 
   // Estado del cuerpo. Una dosis nueva se ve: la mano lleva el dispositivo a la nariz.

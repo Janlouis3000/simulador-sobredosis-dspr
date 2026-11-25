@@ -28,7 +28,12 @@
 html, body { background: var(--bg); }
 body { color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
 button { font: inherit; color: inherit; }
-:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+/* Anillo de foco (WCAG 1.4.11, 3:1 contra lo que lo rodea): azul marino sobre los fondos claros (14:1);
+   celeste solo dentro de las zonas azul marino (8.4:1), donde el marino no se vería. El celeste sobre blanco daba 1.7:1. */
+:focus-visible { outline: 3px solid var(--navy); outline-offset: 2px; }
+.band :focus-visible, .division .a :focus-visible { outline-color: var(--sky); }
+/* Sobre la escena 3D el fondo cambia de un caso a otro (baño claro, callejón oscuro): anillo doble, blanco por dentro y marino por fuera. */
+.stage :focus-visible, .escena3d :focus-visible { box-shadow: 0 0 0 2px #fff; }
 h1, h2 { font-family: var(--font-title); font-weight: 700; line-height: 1.12; text-wrap: balance; margin: 0; letter-spacing: 0.02em; color: var(--navy); }
 h1 { font-size: clamp(1.9rem, 4.4vw, 3rem); }
 h2 { font-size: clamp(1.35rem, 2.6vw, 1.75rem); }

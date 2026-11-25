@@ -4,7 +4,8 @@
 .arbol-app { display: grid; gap: 18px; padding-block: 22px 40px; }
 .arbol-app h1 { font-size: clamp(1.6rem, 4vw, 2.4rem); }
 .arbol-app h2 { font-size: clamp(1.15rem, 2.6vw, 1.5rem); }
-.arbol-app h2:focus, .arbol-app h1:focus, .arbol-app h3:focus, .arbol-app h4:focus { outline: 3px solid var(--sky); outline-offset: 4px; border-radius: 4px; }
+/* El foco va al título de cada paso: el anillo solo se ve si se llegó con teclado (:focus-visible), no después de un clic. */
+.arbol-app h2:focus-visible, .arbol-app h1:focus-visible, .arbol-app h3:focus-visible, .arbol-app h4:focus-visible { outline: 3px solid var(--navy); outline-offset: 4px; border-radius: 4px; }
 .arbol-app .lead { font-size: 1.05rem; max-width: 70ch; }
 
 /* Objetivos táctiles grandes (WCAG 2.2: mínimo 24 px; aquí 44 px) */

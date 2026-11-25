@@ -260,3 +260,36 @@ test('práctica de naloxona, modo sin guía: un dispositivo perdido se ve y el c
   await nuevo.click();
   await expect(page.locator('.estado')).toContainText('Te quedan 1 de 2');
 });
+// WCAG 1.4.11: el anillo de foco debe tener 3:1 contra el fondo que lo rodea (axe no lo revisa).
+// Sobre la escena 3D se acepta el anillo doble (blanco por dentro, marino por fuera), que contrasta con cualquier fondo.
+async function anillosDeFoco(page: import('@playwright/test').Page, veces: number): Promise<string[]> {
+  const malos: string[] = [];
+  await page.locator('body').click({ position: { x: 1, y: 1 } });
+  for (let i = 0; i < veces; i++) {
+    await page.keyboard.press('Tab');
+    const r = await page.evaluate(() => {
+      const e = document.activeElement as HTMLElement | null;
+      if (!e || e === document.body) return null;
+      const s = getComputedStyle(e);
+      const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).map(Number);
+      const L = (c: string) => { const [r, g, b] = rgb(c).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      let p: HTMLElement | null = e.parentElement; let fondo = 'rgb(255, 255, 255)';
+      while (p) { const c = getComputedStyle(p).backgroundColor; const a = rgb(c)[3]; if (a === undefined || a > 0.5) { fondo = c; break; } p = p.parentElement; }
+      const A = L(s.outlineColor), B = L(fondo);
+      return { t: (e.innerText || e.tagName).trim().slice(0, 30), estilo: s.outlineStyle, ancho: parseFloat(s.outlineWidth), ratio: (Math.max(A, B) + 0.05) / (Math.min(A, B) + 0.05),
+        doble: !!e.closest('.escena3d, .stage') && s.boxShadow.includes('255, 255, 255') };
+    });
+    if (!r) break;
+    if (r.estilo === 'none' || r.ancho < 2 || (r.ratio < 3 && !r.doble)) malos.push(`${r.t}: ${r.estilo} ${r.ancho}px, ${r.ratio.toFixed(2)}:1`);
+  }
+  return malos;
+}
+
+test('el anillo de foco se ve con 3:1 de contraste en el menú, en un paso y sobre la escena', async ({ page }) => {
+  await page.goto('arbol.html');
+  expect(await anillosDeFoco(page, 12), 'menú').toEqual([]);
+  await entrar(page);
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  expect(await anillosDeFoco(page, 14), 'paso del caso y botones de cámara').toEqual([]);
+});
