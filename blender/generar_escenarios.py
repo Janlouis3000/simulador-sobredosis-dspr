@@ -343,6 +343,30 @@ def objeto_glb(archivo, pos, rot=(0, 0, 0), escala=1.0, nitido=False):
                     nd.interpolation = 'Closest' if nitido else 'Linear'
 
 
+def pieza(archivo, pos, rot_y=0.0, escala=1.0):
+    """Importa un objeto de modelos/objetos preparado con preparar_objetos.py (muebles, cuadros, plantas de Poly Haven)
+    y lo hornea con el cuarto, como los muebles de Unity: su textura de color se lee de su UV ("textura") y la luz va
+    a una UV nueva. Base (o espalda, si va en la pared) en pos; rot_y gira alrededor de la vertical como en scene.js.
+    Con rot_y = 0 el frente mira a la cámara (+z de scene.js)."""
+    antes = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=os.path.join(OBJETOS, archivo + ".glb"))
+    nuevos = set(bpy.data.objects) - antes
+    for o in [o for o in nuevos if o.type != 'MESH']:
+        bpy.data.objects.remove(o)
+    o = next(o for o in nuevos if o.name in bpy.data.objects and o.type == 'MESH')
+    o.name = "Pieza_" + archivo
+    o.rotation_mode = 'XYZ'
+    o.location = P(*pos); o.rotation_euler = (0, 0, rot_y); o.scale = (escala, escala, escala)
+    if o.data.uv_layers:
+        o.data.uv_layers[0].name = "textura"
+    for m in o.data.materials:
+        b = next((n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if b:
+            m["rugosidad"] = b.inputs["Roughness"].default_value
+    o["dinamico"] = False; o["con_textura"] = True
+    return o
+
+
 # ---------- Muebles y enseres de la Asset Store (proyecto de Unity) ----------
 # House Interior - Free (nappin) y Appliances - SnapNSet Starter (Alstra Infinite), bajados por la persona a cargo con
 # su cuenta de la Asset Store. Se leen los FBX y los materiales de Unity (.mat) directamente de la carpeta Assets.
@@ -448,7 +472,7 @@ def mueble(fbx, pos, rot_y=0.0, medida=("largo", 1.0), max_tris=15000, dinamico=
     o.data.transform(Matrix.Translation(-Vector(((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mn.z))))
     o.data.transform(Matrix.Scale(s, 4))
     o.location = P(*pos); o.rotation_mode = 'XYZ'; o.rotation_euler = (0, 0, rot_y)
-    o["dinamico"] = dinamico; o["de_unity"] = True
+    o["dinamico"] = dinamico; o["con_textura"] = True
     print(f"Mueble {fbx}: {tris} triángulos -> {sum(len(p.vertices) - 2 for p in o.data.polygons)}, escala {s:.3f}, "
           f"{d.x * s:.2f} x {d.y * s:.2f} x {d.z * s:.2f} m")
     return o
@@ -536,12 +560,15 @@ def pastillas():
     objeto_glb("cigs_packet_1", (1.2, 0.42, -0.06), rot=(0, -0.35, 0), escala=0.55)
     # Un cubo de Rubik en la mesa: es la fiesta de una adolescente. Viene de 10 cm; el real mide 5.7 cm.
     objeto_glb("rubiks_cube_mx_1", (0.6, 0.42, -0.36), rot=(0, 0.35, 0), escala=0.57, nitido=True)
-    cilindro("Maceta", 0.14, 0.11, 0.3, (1.25, 0.15, -1.5), mat_color("Maceta", "#b0603c", 0.8))
-    hoja = mat_color("Hojas", "#45803e", 0.8)
-    for i in range(7):
-        a = i / 7 * math.tau
-        esfera(f"Hoja_{i}", 0.12, (1.25 + math.cos(a) * 0.12, 0.45 + (i % 3) * 0.08, -1.5 + math.sin(a) * 0.12), hoja, (0.7, 1.3, 0.7))
     caja("Bocina", 0.28, 0.6, 0.28, (1.3, 0.3, -0.95), mat_color("Bocina", "#1c1e22", 0.5), bisel=0.01)
+    # Objetos que aportó la persona a cargo (Poly Haven, preparados con preparar_objetos.py). Reemplazan la planta de
+    # esferas que había en la esquina. El sofá se quedó: los dos que se aportaron son de estilo antiguo y este es el
+    # de una casa donde vive una adolescente.
+    pieza("planta_suculenta", (1.3, 0.6, -0.95), rot_y=0.4)               # sobre la bocina
+    pieza("sillon", (2.15, 0, -1.12), rot_y=-0.6)                         # de frente a la mesa
+    pieza("canasta_mimbre", (-1.15, 0, -0.3), rot_y=0.3, escala=1.8)      # junto a la lámpara (viene de 21 cm)
+    pieza("marco_clasico", (-0.1, 1.42, Z0 + 0.002))                     # sobre el sofá
+    pieza("marco_dorado", (2.15, 1.5, Z0 + 0.002))                        # sobre el sillón
     for i in range(18):
         x, y = -1.3 + i * 0.16, 2.15 - math.sin(i / 17 * math.pi) * 0.18
         c = ["#ffd36b", "#ff9a6b", "#9fd8ff", "#ffe9a8"][i % 4]
@@ -563,7 +590,10 @@ def xilazina():
     caja("Caja_1", 0.45, 0.35, 0.4, (-1.1, 0.175, -1.35), carton, rot=(0, 0.3, 0), bisel=0.01)
     caja("Caja_2", 0.35, 0.28, 0.32, (-1.12, 0.49, -1.36), mat_color("Carton2", "#9a7f57", 0.95), rot=(0, -0.2, 0), bisel=0.01)
     caja("Carton_piso", 0.55, 0.012, 0.42, (-0.9, 0.006, 0.9), carton, rot=(0, 0.3, 0), bisel=0.003)
-    esfera("Bolsa", 0.22, (-0.1, 0.16, -1.48), mat_color("Bolsa", "#15171a", 0.3), (1, 0.75, 0.9))
+    # Bolsa de basura y zafacón de metal (Poly Haven, preparados con preparar_objetos.py); la bolsa reemplaza la
+    # esfera negra que había entre el tubo y el contenedor.
+    pieza("bolsa_basura", (-0.2, 0, -1.42), rot_y=0.4)
+    pieza("zafacon", (2.05, 0, -1.4), rot_y=0.3)
     cilindro("Tubo", 0.035, 0.035, ALTO, (-0.55, ALTO / 2, -1.7), mat_color("Tubo", "#7d858c", 0.4, 0.7))
     charco("Charco", 0.32, (0.7, 0, 0.9), mat_color("Agua", "#30363a", 0.04))
     # Basura del callejón, junto al contenedor y lejos de la persona: botella de cristal acostada.
@@ -590,6 +620,10 @@ def tardio():
     caja("Alfombra", 1.5, 0.012, 1.0, (0.45, 0.006, 0.2), mat_alfombra("Alfombra", ["#5a4a6b", "#c9b38a", "#8a5a4a", "#e8dcc4"], 5), bisel=0.004)
     caja("Cuadro_marco", 0.7, 0.5, 0.02, (1.35, 1.55, -1.735), mat_color("Marco", "#6b5442", 0.6), bisel=0.004)
     caja("Cuadro", 0.62, 0.42, 0.004, (1.35, 1.55, -1.722), mat_color("Cuadro", "#8ab0c9", 0.9), bisel=0.0)
+    # Objetos que aportó la persona a cargo (Poly Haven, preparados con preparar_objetos.py).
+    pieza("reloj_pared", (mx, 1.8, Z0 + 0.002))                            # sobre la mesa de noche
+    pieza("planta_suculenta", (1.08, ALTO_GAVETERO, -1.55), rot_y=-0.3)   # sobre el gavetero, junto a la cafetera
+    pieza("gavetero_repisas", (X0 + 0.255, 0, 0.85), rot_y=math.pi / 2)   # contra la pared izquierda, al pie de la cama
 
 
 # ---------- Luz y horneado ----------
@@ -638,7 +672,7 @@ def preparar_uv(grupo):
             bpy.ops.object.modifier_apply(modifier=md.name)
         o.select_set(False)
         quitar_ocultas(o)
-        if o.get("de_unity") and o.data.uv_layers:
+        if o.get("con_textura") and o.data.uv_layers:
             # La textura de color sigue leyendo "textura"; la luz se hornea en una UV nueva, que queda activa.
             h = o.data.uv_layers.new(name="horno")
             o.data.uv_layers.active = h
@@ -709,7 +743,7 @@ def hornear(grupo, nombre, tam, muestras):
             b.inputs["Emission Strength"].default_value = 1.0
             fm["horneado"] = True
             o.data.materials[i] = fm
-        if o.get("de_unity"):
+        if o.get("con_textura"):
             # Ya horneado, solo queda la UV de la luz.
             for capa in [c for c in o.data.uv_layers if c.name != "horno"]:
                 o.data.uv_layers.remove(capa)

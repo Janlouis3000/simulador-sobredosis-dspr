@@ -40,7 +40,8 @@ export const Scene3D = (() => {
   const SET = {
     // persona: primera letra de las variantes que sirven al texto del caso (content.js): 'h' hombre adulto,
     // 'm' mujer adulta, 'a' adolescente, 'v' adulto mayor. shirt y pants son para el maniquí.
-    fentanilo: { shirt: '#3e6f91', pants: '#2e3a48', persona: 'h' },
+    // reloj: reloj de pulsera digital en la muñeca izquierda (pedido de la persona a cargo; solo con el personaje GLB).
+    fentanilo: { shirt: '#3e6f91', pants: '#2e3a48', persona: 'h', reloj: true },
     pastillas: { shirt: '#9c3d5a', pants: '#3b4b6b', persona: 'a' },
     xilazina: { shirt: '#5b6b3a', pants: '#3f3a35', persona: 'h' },
     tardio:   { shirt: '#4b4f63', pants: '#2b3140', persona: 'v' },
@@ -261,7 +262,71 @@ export const Scene3D = (() => {
   const TINT = new THREE.Color(1, 1, 1), TINT_CY = new THREE.Color(0.74, 0.8, 1.05);
 
   const sueloPorModelo = new WeakMap(); // modelo GLB -> altura de la raíz en cada pose (groundPoses)
-  function buildPersonGLB(template) {
+
+  // ---------- Reloj de pulsera (modelos/reloj_pulsera.glb, preparado con blender/preparar_objetos.py) ----------
+  // El GLB es un aro alrededor de su eje x (el antebrazo), con la esfera hacia +y (el dorso de la mano) y los lados
+  // hacia z. La esfera queda a RELOJ.alto del eje y la correa sigue un círculo de radio RELOJ.radio. Se ajusta a la
+  // muñeca de cada personaje midiendo la piel en reposo y se cuelga del antebrazo (elL), así sigue todas las poses.
+  const RELOJ_GLB = Object.values(import.meta.glob('../modelos/reloj_pulsera.glb', { query: '?url', import: 'default', eager: true }))[0];
+  const RELOJ = { alto: 0.024, radio: 0.031, atras: 0.03, holgura: 0.003, giro: 60 * D };
+  const relojPorModelo = new WeakMap(); // modelo GLB -> matriz del reloj en el marco del hueso elL (o null)
+  function prepararReloj(model) {
+    model.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = true; nitida(o.material.map); } });
+    return model;
+  }
+  // Con el personaje en reposo: eje del antebrazo (a), dorso (d) y lado del pulgar (l) de la mano izquierda, y la
+  // sección de la muñeca a RELOJ.atras de la articulación (piel y ropa a menos de 1 cm de ese plano). Con manga
+  // larga el puño llega a la muñeca: el reloj queda por encima del puño, no escondido debajo.
+  const SIN_VOLUMEN = new Set(['Ojos', 'Cejas', 'Pestanas', 'Pelo']);
+  function ajusteReloj(model, J) {
+    if (!J.hand_l || !J.elL || !J.thumb_01_l || !J.pinky_01_l) return null;
+    const mallas = [];
+    model.traverse((o) => { if (o.isSkinnedMesh && !SIN_VOLUMEN.has(o.material.name)) mallas.push(o); });
+    if (!mallas.length) return null;
+    const wp = (b) => b.getWorldPosition(new THREE.Vector3());
+    const mano = wp(J.hand_l), a = mano.clone().sub(wp(J.elL)).normalize();
+    const l = wp(J.thumb_01_l).sub(wp(J.pinky_01_l));
+    l.addScaledVector(a, -l.dot(a)).normalize();
+    const d = new THREE.Vector3().crossVectors(l, a).normalize();
+    l.crossVectors(a, d);
+    // Boca arriba la palma mira al techo y el dorso al piso: el reloj, algo flojo, se corre hacia el pulgar
+    // (RELOJ.giro) para que la esfera se vea desde la cámara.
+    const dg = d.clone().multiplyScalar(Math.cos(RELOJ.giro)).addScaledVector(l, Math.sin(RELOJ.giro));
+    l.crossVectors(a, dg); d.copy(dg);
+    const c = mano.addScaledVector(a, -RELOJ.atras);
+    const v = new THREE.Vector3();
+    let y0 = Infinity, y1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const m of mallas) {
+      for (let i = 0, n = m.geometry.attributes.position.count; i < n; i++) {
+        m.getVertexPosition(i, v).applyMatrix4(m.matrixWorld).sub(c);
+        if (Math.abs(v.dot(a)) > 0.01) continue;
+        const y = v.dot(d), z = v.dot(l);
+        if (y * y + z * z > 0.06 * 0.06) continue; // otra parte del cuerpo que cruza el plano (cadera, muslo)
+        y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+      }
+    }
+    if (!(y1 > y0 && z1 > z0)) return null;
+    c.addScaledVector(d, (y0 + y1) / 2).addScaledVector(l, (z0 + z1) / 2);
+    const lim = (k) => Math.min(1.4, Math.max(0.7, k));
+    const ky = lim(((y1 - y0) / 2 + RELOJ.holgura) / RELOJ.alto), kz = lim(((z1 - z0) / 2 + RELOJ.holgura) / RELOJ.radio);
+    const W = new THREE.Matrix4().makeBasis(a, d, l).setPosition(c)
+      .multiply(new THREE.Matrix4().makeScale((ky + kz) / 2, ky, kz));
+    return J.elL.matrixWorld.clone().invert().multiply(W);
+  }
+  function ponerReloj(p) {
+    const ajuste = p.reloj;
+    if (!ajuste) return;
+    const colgar = (m) => {
+      if (person !== p) return;
+      const w = m.clone();
+      ajuste.decompose(w.position, w.quaternion, w.scale);
+      p.J.elL.add(w);
+    };
+    if (listos[RELOJ_GLB]) colgar(listos[RELOJ_GLB]);
+    else cargar(RELOJ_GLB, prepararReloj).then(colgar, (e) => console.warn('No se pudo cargar el reloj de pulsera.', e));
+  }
+
+  function buildPersonGLB(template, conReloj = false) {
     const root = new THREE.Group(), model = cloneSkinned(template);
     root.add(model); root.updateMatrixWorld(true);
     const J = {}, M = {}, blink = [];
@@ -327,6 +392,11 @@ export const Scene3D = (() => {
     const p = { glb: true, root, J, M, hands: rescuerHands(root), toLocal, blink, lips, pupil, faceUp, headFwd, headUp,
       eyeOpen: EYE_REST, eyeRight: EYE_REST, pupilCheck: -1,
       chestAxes, counter, tint: TINT, tintCy: TINT_CY };
+    // El reloj se mide en reposo (antes de groundPoses, que deja al personaje en otra pose), una vez por modelo.
+    if (conReloj && RELOJ_GLB) {
+      if (!relojPorModelo.has(template)) relojPorModelo.set(template, ajusteReloj(model, J));
+      p.reloj = relojPorModelo.get(template);
+    }
     // La altura de cada pose depende solo del modelo y de POSES: se calcula una vez por modelo (recorre todos los
     // vértices con el esqueleto en cuatro poses) y no en cada caso.
     if (!sueloPorModelo.has(template)) sueloPorModelo.set(template, groundPoses(p));
@@ -838,8 +908,10 @@ vec2 pupila(vec2 uv, vec2 c) {
     // Si el personaje ya se precargó (prepare), entra de una vez. Si no, el maniquí ocupa su lugar mientras carga
     // (la interfaz lo tapa con "Preparando la escena…") y se queda solo si el GLB no carga.
     const yaListo = listos[url];
-    setPerson(yaListo ? buildPersonGLB(yaListo) : buildPerson(SET[id]));
-    const persona = yaListo ? Promise.resolve() : cargar(url).then((m) => { if (scene === sceneNow) setPerson(buildPersonGLB(m)); });
+    const conReloj = Boolean(SET[id].reloj);
+    const ponerGLB = (m) => { setPerson(buildPersonGLB(m, conReloj)); ponerReloj(person); };
+    if (yaListo) ponerGLB(yaListo); else setPerson(buildPerson(SET[id]));
+    const persona = yaListo ? Promise.resolve() : cargar(url).then((m) => { if (scene === sceneNow) ponerGLB(m); });
     persona.catch((e) => console.warn('No se pudo cargar el personaje GLB; se usa el maniquí.', e));
     setView('wide', true);
     resize(container);
@@ -957,6 +1029,7 @@ vec2 pupila(vec2 uv, vec2 c) {
   // Al escoger un caso: elige la variante y empieza a cargarla antes de "Comenzar".
   function prepare(id) {
     cargar(elegir(id)).catch(() => {});
+    if (SET[id].reloj && RELOJ_GLB) cargar(RELOJ_GLB, prepararReloj).catch(() => {});
     const url = escenaURL(id);
     if (url) cargar(url, prepararEscenario).catch(() => {});
   }
