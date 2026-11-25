@@ -16,7 +16,10 @@
     "lint": "eslint .",
     "validar": "vitest run src/sim/arbol/validar.test.ts",
     "calibrar": "node scripts/calibrar.js",
-    "comprimir": "node scripts/comprimir.js"
+    "comprimir": "node scripts/comprimir.js",
+    "inventario": "node scripts/inventario.js",
+    "escenarios": "node scripts/blender.js blender/generar_escenarios.py --out modelos",
+    "miniaturas": "node scripts/blender.js blender/miniaturas_escenarios.py --glb modelos --out src/assets"
   },
   "dependencies": {
     "react": "19.3.1",

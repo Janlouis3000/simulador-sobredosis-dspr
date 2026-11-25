@@ -3,7 +3,7 @@
 Simulador educativo en español para adiestramiento comunitario. Lo desarrolla la División de Salud Pública para la Prevención de Sobredosis por Sustancias Psicoactivas del Departamento de Salud de Puerto Rico (DSPR). La persona usuaria encuentra a alguien con una sobredosis, toma decisiones libres (9-1-1, vía aérea, naloxona, respiraciones, RCP, posición de rescate) y ve cómo cambian los signos, el oxígeno y el desenlace.
 
 ## Estado actual (v3: fases 1, 2 y 3 completadas)
-- Proyecto Vite con ES modules y Three.js r187 instalado por npm (sin CDN). `npm run build` genera `dist/index.html`: un solo archivo con JS, CSS, logos, los siete personajes que usan los casos y los cuatro escenarios GLB embebidos (vite-plugin-singlefile) para compartir sin servidor. Pesa unos 11.4 MB: la geometría de personajes y escenarios va comprimida con meshopt (`npm run comprimir`), y las texturas son WebP.
+- Proyecto Vite con ES modules y Three.js r187 instalado por npm (sin CDN). `npm run build` genera `dist/index.html`: un solo archivo con JS, CSS, logos, los siete personajes que usan los casos y los cuatro escenarios GLB embebidos (vite-plugin-singlefile) para compartir sin servidor. Pesa unos 11.9 MB: la geometría de personajes y escenarios va comprimida con meshopt (`npm run comprimir`), y las texturas son WebP.
 - `index.html`: marcado de las tres pantallas (inicio, simulación, resultado).
 - `src/`:
   - `engine.js`: motor fisiológico puro, sin DOM. Es la fuente de verdad clínica del modelo. No cambió en la migración.
@@ -53,7 +53,7 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - `?emocion=asco` en la dirección fija la reacción (capturas, talleres), como `?persona=`.
     - Fuente del despertar con síntomas: hoja de datos y guía de inicio rápido de NARCAN en español (Emergent, 2025-2026). Las respuestas siguen prácticas generales de cuidado después de la naloxona y están pendientes de revisión.
   - `charts.js`: gráficas SVG. `util.js`: `$`, `fmt`, `esc`. `main.js`: punto de entrada. `styles.css`: estilos.
-- **Simulador con árbol de decisiones (los cuatro casos).** Página aparte: `arbol.html` (`npm run dev` → /arbol.html; `npm run build:arbol` → `dist-arbol/arbol.html`, un solo archivo de unos 12 MB porque lleva la escena 3D y los modelos). El simulador clásico (`index.html`) no cambió.
+- **Simulador con árbol de decisiones (los cuatro casos).** Página aparte: `arbol.html` (`npm run dev` → /arbol.html; `npm run build:arbol` → `dist-arbol/arbol.html`, un solo archivo de unos 12.6 MB porque lleva la escena 3D y los modelos). El simulador clásico (`index.html`) no cambió.
   - **Flujo y escena (`src/arbol/App.tsx`):** menú (Jugar, Tutorial, Controles, Cómo usar la naloxona) → pregunta del tutorial (solo la primera vez) → tarjetas de los cuatro escenarios con miniatura → modo y perfil → simulación → informe.
     - El inicio tiene el formato del simulador clásico: título y botones a la izquierda, la tríada a la derecha (`Triada`) y debajo el bloque azul del Programa de Navegadores con los contactos (`Navegadores`, los dos en `componentes/Informe.tsx`). Usan las clases `hero`, `triad` y `division` de `styles.css` y los mismos textos del clásico (claves `triada.*` y `napro.*`).
     - Controles (`componentes/Controles.tsx`): una tarjeta ilustrada por forma de usarlo (ratón, pantalla táctil, teclado), con sus gestos. Los dibujos son decorativos; el texto dice lo mismo.
@@ -78,7 +78,8 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - Segunda dosis: aparece en `decidir` y en `vigilar` cuando pasaron 3 minutos y la persona sigue sin responder (en los casos 1 y 2 basta esperar o vigilar para verla; con ella la adolescente del caso 2 despierta). No se cambió ninguna regla clínica para esto.
     - Higgsfield (generación de imagen a 3D) no se usa: el plan gratuito da 10 créditos (un modelo 3D cuesta 5 y el modo ilimitado no está disponible para la cuenta) y sus mallas no traen el rig, el parpadeo ni las máscaras de cianosis de las personas MPFB.
     - Nitidez: `nitida()` en `scene.js` pone filtro anisotrópico (hasta 8 muestras) a las texturas de los escenarios horneados y de las personas, para que el piso y las alfombras no se vean borrosos en ángulo rasante.
-    - El límite de pixel ratio (2) y las sombras (2048 px) se quedaron como estaban.
+    - Calidad (`CALIDADES` en `scene.js`): `alta` por omisión; `?calidad=baja` en la dirección, para equipos lentos en talleres, dibuja con pixel ratio 1, sombras de 1024 px y filtro anisotrópico 2. No cambia nada clínico ni los iconos.
+    - En `alta`, el límite de pixel ratio (2) y las sombras (2048 px) se quedaron como estaban.
       - Con pixel ratio 2 los bordes ya salen nítidos y la sombra bajo el cuerpo no se ve escalonada. Lo que se veía pixelado era la resolución y la compresión de las texturas.
       - Subirlo a 3 dibujaría 2.25 veces más píxeles en los teléfonos que lo tienen, sin arreglar las texturas.
   - TypeScript estricto (`tsconfig.json`), React 19 y Zod. `npm run typecheck`, `npm run lint` (ESLint) y `npm test` deben pasar.
@@ -119,8 +120,9 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
 - `scripts/comprimir.js` (`npm run comprimir`): comprime con meshopt la geometría de `modelos/persona_*.glb` y `escenario_*.glb`, en el lugar.
   - Usa glTF Transform y meshoptimizer, que son dependencias de desarrollo.
   - Conserva nombres, huesos, claves de forma, colores de vértice y texturas. No usa `prune()`, que borraría las máscaras de cianosis.
-  - Salta los archivos que ya están comprimidos.
-  - Hay que correrlo después de regenerar personas o escenarios en Blender. Personas: de 6.9 a 2.9 MB; escenarios: de 2.8 a 2.2 MB.
+  - Salta los archivos que ya están comprimidos (para unirlos o comprimirlos de nuevo hay que exportarlos otra vez desde Blender: cuantizar dos veces corre las UV de la luz horneada). `npm run comprimir -- carpeta` trabaja en otra carpeta.
+  - En los escenarios, antes de comprimir, une las mallas que comparten material (`flatten` + `join`): menos dibujos por cuadro. Son estáticas y `scene.js` no busca sus nodos por nombre. Las personas no se unen.
+  - Hay que correrlo después de regenerar personas o escenarios en Blender. Personas: de 6.9 a 2.9 MB; escenarios (noviembre de 2026, con la unión de mallas): de 5.1 a 3.5 MB.
   - `scene.js` los descomprime con `MeshoptDecoder` de three, sin hilos, para no usar `Worker` ni URL `blob:`.
 - `prototipo/simulador-sobredosis-dspr.html` es la v2 original, que queda como referencia. No tenía `<!doctype>` ni `<meta viewport>`: abría en modo de compatibilidad y en el teléfono se veía como de escritorio. La v3 ya tiene las dos cosas.
 - `blender/generar_personajes_mpfb.py` genera los nueve personajes con MPFB 2 (MakeHuman para Blender) y los exporta a `modelos/persona_<id>.glb` (de 1.3 a 1.7 MB cada uno, texturas WebP; de 0.58 a 0.74 MB después de `npm run comprimir`). `--solo a1,v2` genera solo esos.
@@ -161,9 +163,9 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
     - 64 muestras bastan: el ruido solo queda en zonas tapadas por muebles, que no se ven.
 - `blender/generar_personaje.py` y `modelos/persona.glb` son el personaje simple de la fase 2. El simulador ya no lo usa; queda como referencia.
 - Unity: el proyecto `%USERPROFILE%\UnityProjects\SimuladorDSPR-assets` (Unity 6000.6.8f1, fuera de OneDrive) solo guarda los assets de la Asset Store de la persona a cargo, para que Blender los lea. El simulador sigue siendo web.
-  - `generar_escenarios.py` lee de su carpeta `Assets` (`--unity`) los FBX y materiales de "House Interior - Free" (nappin) y "Appliances - SnapNSet Starter" (Alstra Infinite) con `mueble()`. Los escala a medidas reales (los de House Interior vienen a casi el doble, cada uno distinto), simplifica los muy densos y los hornea con el cuarto: la textura de color se lee de su UV original y la luz va a una UV nueva.
+  - `generar_escenarios.py` lee de su carpeta `Assets` (`--unity`) los FBX y materiales de "House Interior - Free" (nappin) y "Appliances - SnapNSet Starter" (Alstra Infinite) con `mueble()`. Los escala a medidas reales (los de House Interior vienen a casi el doble, cada uno distinto), simplifica los muy densos antes de ponerlos (`max_tris`: la cama viene con 363 054 triángulos y queda en 20 000; el sofá, de 63 390 a 16 000) y los hornea con el cuarto: la textura de color se lee de su UV original y la luz va a una UV nueva.
   - Objetos aportados por la persona a cargo (`modelos/objetos/`): en el baño, rollo de papel de baño y destapador; en la sala del caso 2, un cubo de Rubik (`nitido=True` para que sus cuadros no se vean borrosos).
-  - Hoy: baño → inodoro, dispensador de jabón y lavadora; sala → sofá y lámpara de pie; cuarto → cama con cabecera, gavetero y cafetera; callejón → ninguno (la persona a cargo pidió quitar la secadora). Los "Fan" de Appliances son campanas de cocina, no abanicos.
+  - Hoy: baño → inodoro y dispensador de jabón (la persona a cargo pidió quitar la lavadora; el FBX sigue en el proyecto de Unity); sala → sofá y lámpara de pie; cuarto → cama con cabecera, gavetero y cafetera; callejón → ninguno (la persona a cargo pidió quitar la secadora). Los "Fan" de Appliances son campanas de cocina, no abanicos.
   - Baño: bañera con ducha (tubo, brazo y regadera), pegada a la pared de fondo y sin nada sobre el borde (la toalla amarilla que había se leía como una tabla de madera). El espejo empieza a 1.32 m del piso, por encima del remate del enchape. En `tina()` el fondo cabe dentro de las cuatro paredes: si llega hasta afuera, sus lados quedan encimados con las paredes y sale una franja con tramado negro y blanco.
   - No se usan: Random Behavior System y NPC AI Engine (Convai) son C#. Convai además manda la voz a la nube y necesita una clave, así que la persona a cargo decidió no usarlo. Su papel lo hacen `EMOCIONES` en `scene.js` y `DESPERTAR` en `content.js`. "1 toon teen" es estilo caricatura y no pega con las personas MPFB.
   - Para correr el script desde una copia en otra carpeta (rutas cortas), pasa `--objetos` con la carpeta de `modelos/objetos`.
@@ -199,6 +201,12 @@ Simulador educativo en español para adiestramiento comunitario. Lo desarrolla l
   - `npm test`: Vitest debe pasar completo (buena respuesta = sobrevive; no hacer nada = muerte; tardío sin RCP = muerte). Si cambia un valor esperado de `engine.test.js`, el modelo clínico cambió: hace falta fuente y revisión. Que pase la calibración solo dice que el motor sigue igual a la v2; no es evidencia de validez clínica. Si falla una propiedad de `engine.propiedades.test.js`, el cambio contradice el protocolo (por ejemplo, dar naloxona antes saldría peor): no se ajusta la prueba sin revisión.
   - `npm run calibrar`: tabla de desenlaces para comparar a ojo.
   - `npm run dev`: servidor de desarrollo. `npm run build` → `dist/index.html`. `npm run preview`: sirve el build.
+  - Modelos 3D, en este orden:
+    1. `npm run escenarios` (o `npm run escenarios -- --solo fentanilo`): hornea en Blender y exporta a `modelos/` sin comprimir. Tarda varios minutos por escenario (Cycles en CPU).
+    2. `npm run miniaturas`: renderiza las miniaturas desde esos GLB sin comprimir.
+    3. `npm run comprimir`.
+    - `npm run inventario` (solo lee): triángulos, vértices, peso, mallas, texturas y si están comprimidos.
+    - `scripts/blender.js` busca Blender en la variable `BLENDER`, en el PATH o en `C:\Program Files\Blender Foundation` (la versión más nueva). Si el script de Python falla, termina con error.
 - Probar en navegador con Playwright, incluido el ancho de teléfono (400 px), sin errores en la consola.
 
 ## Hoja de ruta (una fase por sesión)

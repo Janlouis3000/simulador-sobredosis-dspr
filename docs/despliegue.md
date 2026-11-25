@@ -4,9 +4,9 @@ Hay tres formas de distribuirlo. Las tres salen del mismo código.
 
 | Build | Comando | Resultado | Para qué |
 |---|---|---|---|
-| Sitio web | `npm run build:web` | `dist-web/` (unos 9.3 MB en 27 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
-| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 12 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
-| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 11.4 MB) | Compartir por correo o abrir con doble clic |
+| Sitio web | `npm run build:web` | `dist-web/` (unos 9.8 MB en 27 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
+| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 12.6 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
+| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 11.9 MB) | Compartir por correo o abrir con doble clic |
 
 ## Sitio web (`dist-web/`)
 
@@ -20,6 +20,7 @@ Hay tres formas de distribuirlo. Las tres salen del mismo código.
 - **Rutas relativas:** funciona en cualquier carpeta del servidor, por ejemplo `https://www.salud.pr.gov/simulador/arbol.html`.
 - **Requisitos del servidor:** es un sitio estático (HTML, JS, CSS, GLB) y no necesita base de datos ni servidor de aplicaciones. Sirve cualquier servidor web, Azure Static Web Apps, GitHub Pages o un bucket de S3.
 - **Tipo de los modelos:** el servidor debe enviar los `.glb` como `model/gltf-binary`. Si no lo hace, la mayoría de los navegadores igual los aceptan.
+- **Equipos lentos (talleres):** agregar `?calidad=baja` a la dirección (por ejemplo, `arbol.html?calidad=baja`). La escena dibuja menos píxeles y sombras más suaves; las decisiones, los textos y los iconos no cambian.
 
 ### Encabezados recomendados del servidor
 

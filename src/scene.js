@@ -11,6 +11,16 @@ import { ESCENARIOS, buildSet, contactShadow, vomitPuddle } from './ambiente.js'
 // Desde r155 las luces son físicas: se multiplica por PI para conservar la iluminación de la v2 (r147).
 const LI = Math.PI;
 
+// Calidad de la imagen. `alta` (por omisión) es la de siempre. `?calidad=baja` en la dirección es para computadoras
+// o teléfonos lentos en talleres: dibuja 1 píxel por píxel de pantalla en vez de hasta 2 (en una pantalla de alta
+// densidad, la cuarta parte de los píxeles), un mapa de sombras de 1024 px (la cuarta parte de memoria; el borde
+// de la sombra se ve más suave) y menos filtrado de texturas (el piso se ve algo más borroso en ángulo rasante).
+const CALIDADES = {
+  alta: { pixeles: 2, sombra: 2048, anisotropia: 8 },
+  baja: { pixeles: 1, sombra: 1024, anisotropia: 2 },
+};
+const CALIDAD = CALIDADES[typeof location === 'undefined' ? '' : new URLSearchParams(location.search).get('calidad')] ?? CALIDADES.alta;
+
 export const Scene3D = (() => {
   let R, scene, cam, controls, clock, person, props = {}, ready = false, setGroup = null;
   let contenedor = null, observador = null; // dónde está el lienzo ahora
@@ -173,7 +183,7 @@ export const Scene3D = (() => {
   const nitida = (t) => {
     if (!t) return;
     if (!R) { sinNitidez.push(t); return; }
-    t.anisotropy = Math.min(8, R.capabilities.getMaxAnisotropy()); t.needsUpdate = true;
+    t.anisotropy = Math.min(CALIDAD.anisotropia, R.capabilities.getMaxAnisotropy()); t.needsUpdate = true;
   };
   function prepararEscenario(model) {
     model.traverse((o) => {
@@ -772,7 +782,7 @@ vec2 pupila(vec2 uv, vec2 c) {
   function init(container, id) {
     if (!R) {
       R = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: false });
-      R.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      R.setPixelRatio(Math.min(window.devicePixelRatio || 1, CALIDAD.pixeles));
       R.shadowMap.enabled = true; R.shadowMap.type = THREE.PCFShadowMap;
       R.outputColorSpace = THREE.SRGBColorSpace; R.toneMapping = THREE.ACESFilmicToneMapping; R.toneMappingExposure = 0.95;
       cam = new THREE.PerspectiveCamera(36, 16 / 10, 0.05, 30);
@@ -786,7 +796,7 @@ vec2 pupila(vec2 uv, vec2 c) {
       // los de los casos anteriores no se liberarían nunca.
       luces.hemi = new THREE.HemisphereLight();
       luces.key = new THREE.DirectionalLight(); luces.key.position.set(1.6, 3.4, 1.4); luces.key.castShadow = true;
-      luces.key.shadow.mapSize.set(2048, 2048);
+      luces.key.shadow.mapSize.set(CALIDAD.sombra, CALIDAD.sombra);
       Object.assign(luces.key.shadow.camera, { left: -2, right: 2, top: 2, bottom: -2 });
       luces.key.shadow.bias = -0.0004; luces.key.shadow.normalBias = 0.02; luces.key.shadow.radius = 5;
       luces.fill = new THREE.DirectionalLight(0x8acff3, 0.3 * LI); luces.fill.position.set(-2.5, 1.8, 2);

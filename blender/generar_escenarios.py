@@ -494,11 +494,10 @@ def fentanilo():
     cilindro("Ducha_tubo", 0.011, 0.011, 1.15, (-1.06, 1.375, -1.735), metal, dinamico=True)
     cilindro("Ducha_brazo", 0.011, 0.011, 0.26, (-1.06, 1.95, -1.61), metal, rot=(math.pi / 2, 0, 0), dinamico=True)
     cilindro("Ducha_regadera", 0.075, 0.03, 0.045, (-1.06, 1.925, -1.48), metal, dinamico=True)
-    # Inodoro (House Interior) y lavadora (Appliances): en muchas casas de Puerto Rico la lavadora va en el baño.
+    # Inodoro (House Interior). La lavadora que había a su derecha se quitó a pedido de la persona a cargo.
     mueble("Toilet", (0.95, 0, -1.38), math.pi / 2, ("alto", 0.78))
-    mueble("KA-F600_Washer_V1", (1.75, 0, -1.4), ROT_ALSTRA, ("alto", 0.85))
-    # Rollo de papel de baño en el piso, entre el gabinete y el inodoro, y un destapador entre el inodoro y la
-    # lavadora (los aportó la persona a cargo). El rollo viene de 14 cm; se baja a 11 cm.
+    # Rollo de papel de baño en el piso, entre el gabinete y el inodoro, y un destapador a la derecha del inodoro
+    # (los aportó la persona a cargo). El rollo viene de 14 cm; se baja a 11 cm.
     objeto_glb("toilet_paper_roll_mp_1", (0.58, 0.0, -1.55), rot=(0, 0.3, 0), escala=0.76)
     objeto_glb("toilet_plunger_mp_1", (1.29, 0.0, -1.62), rot=(0, 0.6, 0))
     # Gabinete con lavamanos
