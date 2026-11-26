@@ -1,4 +1,4 @@
-// Comprime la geometría de modelos/persona_*.glb, escenario_*.glb y reloj_pulsera.glb con meshopt (EXT_meshopt_compression).
+// Comprime la geometría de modelos/persona_*.glb, escenario_*.glb, reloj_pulsera.glb y saliva.glb con meshopt (EXT_meshopt_compression).
 // Uso: npm run comprimir [-- carpeta]   (después de regenerar personas o escenarios en Blender; por omisión, modelos/)
 //
 // Cuantiza posiciones, normales, UV, pesos, colores de vértice y claves de forma, y las comprime. No toca las texturas
@@ -26,7 +26,7 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS)
 const dir = process.argv[2] || 'modelos'; // otra carpeta para probar sin tocar modelos/
 const kb = (b) => Math.round(b / 1024);
 let total0 = 0, total1 = 0;
-for (const f of readdirSync(dir).filter((x) => /^(persona_|escenario_|reloj_).+\.glb$/.test(x))) {
+for (const f of readdirSync(dir).filter((x) => /^((persona_|escenario_|reloj_).+|saliva)\.glb$/.test(x))) {
   const ruta = unirRuta(dir, f), antes = statSync(ruta).size;
   const doc = await io.read(ruta);
   if (doc.getRoot().listExtensionsUsed().some((e) => e.extensionName === 'EXT_meshopt_compression')) {

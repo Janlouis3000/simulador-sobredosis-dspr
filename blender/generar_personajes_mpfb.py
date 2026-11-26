@@ -11,9 +11,11 @@ Uso (desde la carpeta del proyecto):
     blender --background --python blender/generar_personajes_mpfb.py -- --out modelos --solo h1
 
 Qué hace con cada variante de VARIANTES:
-  1. Crea el humano (género, edad, mezcla de ancestría, peso) con piel, ojos, cejas, pestañas, pelo y ropa.
+  1. Crea el humano (género, edad, mezcla de ancestría, peso) con piel, ojos, cejas, pestañas, dientes, lengua,
+     pelo y ropa.
   2. Agrega el rig "Game engine" y cambia el nombre de los huesos a los del simulador (scene.js).
-  3. Carga las unidades faciales eyeBlinkLeft/eyeBlinkRight y las pasa a pestañas y cejas: así se cierran los ojos.
+  3. Carga las unidades faciales eyeBlinkLeft/eyeBlinkRight (se cierran los ojos) y jawOpen (se abre la boca y se
+     ven los dientes antes de vomitar) y las pasa a cejas, pestañas, dientes, lengua y pelo.
   4. Fija las formas del cuerpo, aplica las máscaras de la ropa y borra la geometría auxiliar.
   5. Mezcla dos pieles de MakeHuman (mismo mapa UV) para lograr tonos intermedios de piel.
   6. Guarda en el color de vértice las zonas de cianosis (labios, uñas y dedos) para el shader de scene.js.
@@ -95,7 +97,13 @@ for lado, s in (("l", "L"), ("r", "R")):
 # distingue en la vista general (+170 KB), así que queda en 1024.
 # Los ojos usan la textura café por defecto de MPFB (brown_eye.png): scene.js agranda o achica su pupila con un
 # shader que depende de la posición de los ojos en esa textura, así que no se cambia por otra.
-TEX = {"Piel": 2048, "Ropa": 1024, "Pelo": 512, "Zapatos": 512, "Ojos": 512, "Cejas": 256, "Pestanas": 256}
+TEX = {"Piel": 2048, "Ropa": 1024, "Pelo": 512, "Zapatos": 512, "Ojos": 512, "Cejas": 256, "Pestanas": 256,
+       "Dientes": 256, "Lengua": 256}
+# Dientes y lengua de MakeHuman (CC0): se ven cuando la boca se abre antes de vomitar (scene.js, clave jawOpen).
+DIENTES, LENGUA = "teeth_base", "tongue01"
+# Claves de forma que se conservan: los párpados y la apertura de la mandíbula (ARKit, Faceunits 01). MPFB las
+# pasa también a cejas, pestañas, dientes y lengua.
+CLAVES = ("Basis", "eyeBlinkLeft", "eyeBlinkRight", "jawOpen")
 if args.tex_piel:
     TEX["Piel"] = args.tex_piel
 if args.tex_ropa:
@@ -163,6 +171,8 @@ def crear(v):
     info["eyes"] = "low-poly/low-poly.mhclo"
     info["eyebrows"] = f"{v['cejas']}/{v['cejas']}.mhclo"
     info["eyelashes"] = f"{v['pestanas']}/{v['pestanas']}.mhclo"
+    info["teeth"] = f"{DIENTES}/{DIENTES}.mhclo"
+    info["tongue"] = f"{LENGUA}/{LENGUA}.mhclo"
     info["hair"] = f"{v['pelo']}/{v['pelo']}.mhclo"
     info["clothes"] = [f"{c}/{c}.mhclo" for c in v["ropa"]]
     info["skin_mhmat"] = f"skins/{v['piel'][0]}/{v['piel'][0]}.mhmat"
@@ -173,11 +183,11 @@ def crear(v):
     body = HumanService.deserialize_from_dict(info, settings)
     rig = body.parent
 
-    # Formas del cuerpo fijas; solo quedan los párpados como claves de forma.
+    # Formas del cuerpo fijas; solo quedan los párpados y la mandíbula como claves de forma (CLAVES).
     TargetService.bake_targets(body)
     FaceService.load_targets(body, load_microsoft_visemes=False, load_meta_visemes=False, load_arkit_faceunits=True)
     for kb in list(body.data.shape_keys.key_blocks):
-        if kb.name not in ("Basis", "eyeBlinkLeft", "eyeBlinkRight"):
+        if kb.name not in CLAVES:
             body.shape_key_remove(kb)
     FaceService.interpolate_targets(body)
     ExportService.bake_modifiers_remove_helpers(body, bake_masks=True, bake_subdiv=False, remove_helpers=True, also_proxy=True)
@@ -233,6 +243,10 @@ def crear(v):
             tipo = "Cejas"
         elif nombre == v["pestanas"]:
             tipo = "Pestanas"
+        elif nombre == DIENTES:
+            tipo = "Dientes"
+        elif nombre == LENGUA:
+            tipo = "Lengua"
         else:
             tipo = "Ojos"
         o.name = tipo if tipo != "Ropa" else "Ropa_" + nombre

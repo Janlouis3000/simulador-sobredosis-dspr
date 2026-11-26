@@ -25,6 +25,7 @@ export const Scene3D = (() => {
   let R, scene, cam, controls, clock, person, props = {}, ready = false, setGroup = null;
   let contenedor = null, observador = null; // dónde está el lienzo ahora
   let nalox = null; // animación de la naloxona en curso
+  let arcada = null; // boca abierta y saliva antes del charco (animarArcada)
   let escenarioGLB = false; // el escenario a la vista es el horneado (true) o el procedural de respaldo (false)
   let camGoal = null; // { pos, target }
   let view = 'wide';
@@ -326,10 +327,146 @@ export const Scene3D = (() => {
     else cargar(RELOJ_GLB, prepararReloj).then(colgar, (e) => console.warn('No se pudo cargar el reloj de pulsera.', e));
   }
 
+  // ---------- Boca y saliva antes de vomitar (modelos/saliva.glb, hecho con blender/generar_saliva.py) ----------
+  // Unos segundos antes del charco la persona abre la boca (clave jawOpen de MPFB en piel, dientes, lengua, cejas y
+  // pelo), se ven los dientes y se estiran unos hilos de saliva entre los labios. Es solo lo que se ve: el motor y
+  // los textos no cambian. El GLB son 5 hilos con claves de forma s1…s7 (cuadros de una simulación de tela): de 3 mm
+  // de alto con la boca cerrada a SALIVA.alto con la mandíbula abajo. x va de una comisura a la otra, y hacia arriba
+  // (el extremo de arriba en y = 0) y z hacia afuera de la cara.
+  const SALIVA_GLB = Object.values(import.meta.glob('../modelos/saliva.glb', { query: '?url', import: 'default', eager: true }))[0];
+  const SALIVA = { alto: 0.02, ancho: 0.032, cuadros: [1, 8, 14, 20, 26, 32, 38, 44], baja: 38, fps: 24 };
+  // Tiempos (s desde que empieza el vómito): la boca se abre en `abre`, el charco aparece en `charco` (la saliva se
+  // desvanece en `desvanece`), la boca se cierra desde `cierra` durante `cierre`, y la cámara vuelve en `vuelve`.
+  const ARCADA = { abre: 1.6, charco: 2.2, desvanece: 0.4, cierra: 4.5, cierre: 1, vuelve: 3.8, boca: 0.55, opacidad: 0.6 };
+  // `?arcada=1.2` en la dirección deja la secuencia quieta en ese segundo (capturas y talleres), como `?nalox=`.
+  const ARCADA_FIJA = (() => { try { const v = new URLSearchParams(location.search).get('arcada'); return v === null ? null : Number(v); } catch { return null; } })();
+  const movimientoReducido = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const bocaPorModelo = new WeakMap(); // modelo GLB -> matriz de la saliva en el marco del hueso head (o null)
+  function prepararSaliva(model) {
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      // Líquido claro y brillante (agua con algo de mucosidad, IOR ≈ 1.34): reflejos del entorno, sin sombra.
+      o.material = new THREE.MeshPhysicalMaterial({ color: '#f2efe6', roughness: 0.06, metalness: 0, clearcoat: 1,
+        clearcoatRoughness: 0.04, ior: 1.34, transparent: true, opacity: ARCADA.opacidad, depthWrite: false, envMapIntensity: 1.6 });
+      o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false;
+    });
+    return model;
+  }
+  // Con el personaje en reposo: los labios son los vértices de la piel con la máscara de cianosis r (labios). El
+  // labio de abajo es el que se mueve con jawOpen. Los hilos van del borde del labio de arriba al de abajo (con la
+  // boca abierta ARCADA.boca), en el centro de la boca y a lo ancho de algo más de la mitad de ella.
+  function medirBoca(model, J) {
+    let piel = null;
+    model.traverse((o) => { if (o.isSkinnedMesh && o.material.name === 'Piel') piel = o; });
+    const jaw = piel?.morphTargetDictionary?.jawOpen, mask = piel?.geometry.attributes.cyMask;
+    if (jaw === undefined || !mask || !J.head) return null;
+    piel.skeleton.update(); // getVertexPosition aplica las matrices de los huesos
+    const labios = [], v = new THREE.Vector3();
+    for (let i = 0; i < mask.count; i++) {
+      if (mask.getX(i) < 0.5) continue;
+      piel.morphTargetInfluences[jaw] = 0;
+      const p0 = piel.getVertexPosition(i, v).applyMatrix4(piel.matrixWorld).clone();
+      piel.morphTargetInfluences[jaw] = 1;
+      const d = piel.getVertexPosition(i, v).applyMatrix4(piel.matrixWorld).sub(p0).clone();
+      labios.push({ p: p0, d });
+    }
+    piel.morphTargetInfluences[jaw] = 0;
+    if (labios.length < 20) return null;
+    const dMax = Math.max(...labios.map((l) => l.d.length()));
+    let x0 = Infinity, x1 = -Infinity, cx = 0;
+    for (const l of labios) { x0 = Math.min(x0, l.p.x); x1 = Math.max(x1, l.p.x); cx += l.p.x; }
+    cx /= labios.length;
+    const centro = labios.filter((l) => Math.abs(l.p.x - cx) < 0.008);
+    const arriba = centro.filter((l) => l.d.length() < 0.15 * dMax), abajo = centro.filter((l) => l.d.length() > 0.4 * dMax);
+    if (!arriba.length || !abajo.length) return null;
+    const media = (ls) => ls.reduce((a, l) => a.add(l.p), new THREE.Vector3()).divideScalar(ls.length);
+    const yA = Math.min(...arriba.map((l) => l.p.y)), yB = Math.max(...abajo.map((l) => l.p.y));
+    const T = media(arriba.filter((l) => l.p.y < yA + 0.001)).setX(cx);
+    const B = media(abajo.filter((l) => l.p.y > yB - 0.001)).setX(cx);
+    const dB = abajo.reduce((a, l) => a.add(l.d), new THREE.Vector3()).divideScalar(abajo.length);
+    const hilo = B.addScaledVector(dB, ARCADA.boca).sub(T); // de arriba abajo, con la boca abierta
+    const y = hilo.clone().normalize().negate(), x = new THREE.Vector3(1, 0, 0);
+    x.addScaledVector(y, -x.dot(y)).normalize();
+    const z = new THREE.Vector3().crossVectors(x, y);
+    const sx = 0.6 * (x1 - x0) / SALIVA.ancho, sy = hilo.length() / SALIVA.alto;
+    const W = new THREE.Matrix4().makeBasis(x, y, z).setPosition(T.addScaledVector(z, 0.0015))
+      .multiply(new THREE.Matrix4().makeScale(sx, sy, sx));
+    return J.head.matrixWorld.clone().invert().multiply(W);
+  }
+  function ponerSaliva(p) {
+    if (!p.boca || !SALIVA_GLB) return;
+    const colgar = (m) => {
+      if (person !== p) return;
+      const s = m.clone();
+      s.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); p.saliva = o; } });
+      p.boca.decompose(s.position, s.quaternion, s.scale);
+      s.visible = false; p.salivaRaiz = s;
+      p.J.head.add(s);
+    };
+    if (listos[SALIVA_GLB]) colgar(listos[SALIVA_GLB]);
+    else cargar(SALIVA_GLB, prepararSaliva).then(colgar, (e) => console.warn('No se pudo cargar la saliva.', e));
+  }
+  // Abre la boca (0 a 1) en todas las mallas que tienen la clave jawOpen.
+  function setBoca(p, v) {
+    for (const o of p.jaw) o.morphTargetInfluences[o.morphTargetDictionary.jawOpen] = v;
+  }
+  // Mira la boca: de cerca si está boca arriba; de lado (posición de rescate), desde arriba y algo más lejos.
+  function vistaBoca() {
+    const n = nariz(0), boca = n.p.clone().addScaledVector(n.up, -0.04);
+    const lat = new THREE.Vector3().crossVectors(n.up, n.fwd), Y = new THREE.Vector3(0, 1, 0);
+    const haciaVista = new THREE.Vector3(1.5, 1.5, 1.15).sub(boca).normalize();
+    if (lat.dot(haciaVista) < 0) lat.negate();
+    const bocaArriba = n.fwd.y > 0.5;
+    const d = bocaArriba ? n.fwd.clone().multiplyScalar(0.8).addScaledVector(lat, 0.3).addScaledVector(n.up, -0.6).normalize()
+      : haciaVista.multiplyScalar(0.5).add(Y).normalize();
+    const pos = boca.clone().addScaledVector(d, bocaArriba ? 0.42 : 1.0);
+    if (pos.y < 0.15) pos.y = 0.15;
+    camGoal = { pos, target: boca };
+  }
+  const suavizar = (a) => { a = Math.max(0, Math.min(1, a)); return a * a * (3 - 2 * a); };
+  // Boca, saliva, charco y cámara en el segundo ta de la secuencia (ta < 0: no hay vómito).
+  function animarArcada(ta, dt) {
+    const p = person, quieto = movimientoReducido();
+    if (p.jaw?.length) {
+      let j = 0;
+      if (ta >= 0) {
+        j = quieto ? 1 : suavizar(ta / ARCADA.abre);
+        if (ta > ARCADA.cierra) j *= 1 - suavizar((ta - ARCADA.cierra) / ARCADA.cierre);
+      }
+      p.bocaAbierta = (p.bocaAbierta ?? 0) + (ARCADA.boca * j - (p.bocaAbierta ?? 0)) * (1 - Math.exp(-dt * 12));
+      setBoca(p, p.bocaAbierta);
+    }
+    const s = p.saliva;
+    if (s) {
+      const vis = ta >= 0 && ta < ARCADA.charco + ARCADA.desvanece;
+      p.salivaRaiz.visible = vis;
+      if (vis) {
+        const C = SALIVA.cuadros;
+        let f = quieto ? SALIVA.baja : ta < ARCADA.abre ? 1 + (SALIVA.baja - 1) * suavizar(ta / ARCADA.abre) : SALIVA.baja + (ta - ARCADA.abre) * SALIVA.fps;
+        f = Math.min(C[C.length - 1], f);
+        const inf = s.morphTargetInfluences;
+        inf.fill(0);
+        for (let i = 1; i < C.length; i++) {
+          if (f > C[i]) continue;
+          const a = (f - C[i - 1]) / (C[i] - C[i - 1]);
+          if (i > 1) inf[i - 2] = 1 - a; // la clave s(i-1) está en inf[i-2]; el cuadro 1 es la base
+          inf[i - 1] = a;
+          break;
+        }
+        const entra = quieto ? 1 : Math.min(1, ta / 0.2), sale = 1 - Math.max(0, (ta - ARCADA.charco) / ARCADA.desvanece);
+        s.material.opacity = ARCADA.opacidad * entra * sale;
+      }
+    }
+    if (arcada && !quieto && p.glb) {
+      if (!arcada.mira) { arcada.mira = true; arcada.vista = view; vistaBoca(); }
+      if (!arcada.volvio && ta >= ARCADA.vuelve && ARCADA_FIJA === null) { arcada.volvio = true; setView(arcada.vista); }
+    }
+  }
+
   function buildPersonGLB(template, conReloj = false) {
     const root = new THREE.Group(), model = cloneSkinned(template);
     root.add(model); root.updateMatrixWorld(true);
-    const J = {}, M = {}, blink = [];
+    const J = {}, M = {}, blink = [], jaw = [];
     model.traverse((o) => {
       if (o.isBone) J[o.name] = o;
       if (!o.isSkinnedMesh) return;
@@ -348,6 +485,9 @@ export const Scene3D = (() => {
       if (name === 'Piel') M.skin = m;
       if (name === 'Ojos') M.eyes = m;
       if (o.morphTargetDictionary && 'eyeBlinkLeft' in o.morphTargetDictionary) blink.push(o);
+      if (o.morphTargetDictionary && 'jawOpen' in o.morphTargetDictionary) jaw.push(o);
+      // Dientes y lengua quedan dentro de la boca: no proyectan sombra (como los ojos).
+      if (name === 'Dientes' || name === 'Lengua') o.castShadow = false;
     });
     const lips = cyanosisShader(M.skin), pupil = M.eyes ? pupilShader(M.eyes) : null;
     // El hueso spine (pelvis) queda en el origen, como en el maniquí.
@@ -389,7 +529,7 @@ export const Scene3D = (() => {
     const headInv = wq(J.head).invert();
     const headFwd = new THREE.Vector3(0, 0, 1).applyQuaternion(headInv), headUp = new THREE.Vector3(0, 1, 0).applyQuaternion(headInv);
 
-    const p = { glb: true, root, J, M, hands: rescuerHands(root), toLocal, blink, lips, pupil, faceUp, headFwd, headUp,
+    const p = { glb: true, root, J, M, hands: rescuerHands(root), toLocal, blink, jaw, lips, pupil, faceUp, headFwd, headUp,
       eyeOpen: EYE_REST, eyeRight: EYE_REST, pupilCheck: -1,
       chestAxes, counter, tint: TINT, tintCy: TINT_CY };
     // El reloj se mide en reposo (antes de groundPoses, que deja al personaje en otra pose), una vez por modelo.
@@ -397,6 +537,9 @@ export const Scene3D = (() => {
       if (!relojPorModelo.has(template)) relojPorModelo.set(template, ajusteReloj(model, J));
       p.reloj = relojPorModelo.get(template);
     }
+    // La boca también se mide en reposo, una vez por modelo.
+    if (!bocaPorModelo.has(template)) bocaPorModelo.set(template, medirBoca(model, J));
+    p.boca = bocaPorModelo.get(template);
     // La altura de cada pose depende solo del modelo y de POSES: se calcula una vez por modelo (recorre todos los
     // vértices con el esqueleto en cuatro poses) y no en cada caso.
     if (!sueloPorModelo.has(template)) sueloPorModelo.set(template, groundPoses(p));
@@ -886,7 +1029,7 @@ vec2 pupila(vec2 uv, vec2 c) {
       contenedor = container;
     }
     R.setAnimationLoop(loop); // vuelve a dibujar (pausar() lo detiene al salir del caso)
-    nalox = null;
+    nalox = null; arcada = null;
     scene = new THREE.Scene();
     const E = ESCENARIOS[id];
     scene.environment = envMap; scene.environmentIntensity = E.env;
@@ -909,7 +1052,7 @@ vec2 pupila(vec2 uv, vec2 c) {
     // (la interfaz lo tapa con "Preparando la escena…") y se queda solo si el GLB no carga.
     const yaListo = listos[url];
     const conReloj = Boolean(SET[id].reloj);
-    const ponerGLB = (m) => { setPerson(buildPersonGLB(m, conReloj)); ponerReloj(person); };
+    const ponerGLB = (m) => { setPerson(buildPersonGLB(m, conReloj)); ponerReloj(person); ponerSaliva(person); };
     if (yaListo) ponerGLB(yaListo); else setPerson(buildPerson(SET[id]));
     const persona = yaListo ? Promise.resolve() : cargar(url).then((m) => { if (scene === sceneNow) ponerGLB(m); });
     persona.catch((e) => console.warn('No se pudo cargar el personaje GLB; se usa el maniquí.', e));
@@ -1002,8 +1145,13 @@ vec2 pupila(vec2 uv, vec2 c) {
     // Utilería
     props.n1.visible = state.dosesUsed < 1; props.n2.visible = state.dosesUsed < 2;
     props.phone.visible = state.phone;
-    // Mientras se ve la mano dando la naloxona, el charco espera: primero la administración, después el vómito.
-    const vomito = state.vomit && !nalox;
+    // Mientras se ve la mano dando la naloxona, el vómito espera: primero la administración, después el vómito.
+    // Antes del charco la persona abre la boca y se ven los dientes y la saliva unos segundos (ARCADA).
+    if (!state.vomit) arcada = null;
+    else if (!nalox && !arcada) arcada = { t0: state.t };
+    const ta = !arcada ? -1 : ARCADA_FIJA ?? state.t - arcada.t0;
+    animarArcada(ta, dt);
+    const vomito = ta >= ARCADA.charco;
     if (vomito && !props.vomit.visible) placeVomit();
     props.vomit.visible = vomito;
     if (props.vomit.visible && props.vomit.scale.x < 1) props.vomit.scale.setScalar(Math.min(1, props.vomit.scale.x + dt * 0.7));
@@ -1030,6 +1178,7 @@ vec2 pupila(vec2 uv, vec2 c) {
   function prepare(id) {
     cargar(elegir(id)).catch(() => {});
     if (SET[id].reloj && RELOJ_GLB) cargar(RELOJ_GLB, prepararReloj).catch(() => {});
+    if (SALIVA_GLB) cargar(SALIVA_GLB, prepararSaliva).catch(() => {});
     const url = escenaURL(id);
     if (url) cargar(url, prepararEscenario).catch(() => {});
   }
@@ -1041,5 +1190,15 @@ vec2 pupila(vec2 uv, vec2 c) {
   // menú y en el informe. init() lo vuelve a encender.
   function pausar() { if (R) R.setAnimationLoop(null); }
 
-  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, charco, pausar, get view() { return view; } };
+  // Solo lectura, para pruebas y diagnóstico: boca abierta (0 a 1) y saliva (si está, si se ve, dónde y cuánto mide).
+  function boca() {
+    if (!person) return null;
+    const s = person.saliva, r = person.salivaRaiz;
+    const caja = s && r.visible ? new THREE.Box3().setFromObject(r) : null;
+    return { medida: Boolean(person.boca), abierta: person.bocaAbierta ?? 0, saliva: Boolean(s), visible: Boolean(r?.visible),
+      opacidad: s?.material.opacity ?? 0, claves: s ? [...s.morphTargetInfluences] : [],
+      centro: caja ? caja.getCenter(new THREE.Vector3()).toArray() : null, tamano: caja ? caja.getSize(new THREE.Vector3()).toArray() : null };
+  }
+
+  return { init, update, setView, prepare, checkPupils, anclas, darNaloxona, charco, boca, pausar, get view() { return view; } };
 })();

@@ -4,9 +4,9 @@ Hay tres formas de distribuirlo. Las tres salen del mismo código.
 
 | Build | Comando | Resultado | Para qué |
 |---|---|---|---|
-| Sitio web | `npm run build:web` | `dist-web/` (unos 10.5 MB en 28 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
-| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 13.5 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
-| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 12.9 MB) | Compartir por correo o abrir con doble clic |
+| Sitio web | `npm run build:web` | `dist-web/` (unos 10.9 MB en 29 archivos) | Publicarlo con un enlace o dentro de otra página (iframe) |
+| Simulador por pasos, un archivo | `npm run build:arbol` | `dist-arbol/arbol.html` (unos 14.7 MB, con la escena 3D y los modelos) | Compartir por correo o abrir con doble clic |
+| Simulador clásico 3D, un archivo | `npm run build` | `dist/index.html` (unos 14.1 MB) | Compartir por correo o abrir con doble clic |
 
 ## Sitio web (`dist-web/`)
 

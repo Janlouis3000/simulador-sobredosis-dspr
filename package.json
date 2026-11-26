@@ -19,6 +19,7 @@
     "comprimir": "node scripts/comprimir.js",
     "inventario": "node scripts/inventario.js",
     "objetos": "node scripts/blender.js blender/preparar_objetos.py",
+    "saliva": "node scripts/blender.js blender/generar_saliva.py",
     "escenarios": "node scripts/blender.js blender/generar_escenarios.py --out modelos",
     "miniaturas": "node scripts/blender.js blender/miniaturas_escenarios.py --glb modelos --out src/assets"
   },
